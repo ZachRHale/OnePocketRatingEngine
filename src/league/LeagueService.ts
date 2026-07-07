@@ -1,4 +1,10 @@
-import type { BallSpot, Match, Player, PlayerId } from "../domain/index.js";
+import type {
+  BallSpot,
+  Match,
+  Player,
+  PlayerId,
+  SessionId,
+} from "../domain/index.js";
 import type { PlayerRating } from "../rating/index.js";
 import {
   DEFAULT_HANDICAP_TABLE,
@@ -62,6 +68,7 @@ export interface LeagueServiceOptions {
 export class LeagueService {
   private readonly players: Map<PlayerId, Player>;
   private readonly ratings: Map<PlayerId, PlayerRating>;
+  private readonly matches: readonly Match[];
   private readonly records: Map<PlayerId, PlayerRecord>;
   private readonly handicapTable: HandicapTier[];
 
@@ -73,6 +80,7 @@ export class LeagueService {
   ) {
     this.players = new Map(players.map((p) => [p.id, p]));
     this.ratings = new Map(ratings.map((r) => [r.playerId, r]));
+    this.matches = matches;
     this.records = computePlayerRecords(
       matches,
       players.map((p) => p.id),
@@ -126,12 +134,24 @@ export class LeagueService {
   }
 
   /**
-   * The full standings, ranked by win percentage (desc); ties broken by how
-   * close the player's losses were (desc — a narrow loss beats a blowout), then
-   * by name. Rank is 1-based and assigned by row order.
+   * The standings, ranked by win percentage (desc); ties broken by how close
+   * the player's losses were (desc — a narrow loss beats a blowout), then by
+   * name. Rank is 1-based and assigned by row order.
+   *
+   * Pass a `sessionId` for that session's standings only (records reset each
+   * session); omit it for all-time standings across every match. Every rostered
+   * player is always listed, even with no games that session.
    */
-  standings(): Standing[] {
-    const rows = [...this.records.values()].map((record) => {
+  standings(sessionId?: SessionId): Standing[] {
+    const records =
+      sessionId === undefined
+        ? this.records
+        : computePlayerRecords(
+            this.matches.filter((m) => m.sessionId === sessionId),
+            [...this.players.keys()],
+          );
+
+    const rows = [...records.values()].map((record) => {
       const rating = this.ratings.get(record.playerId);
       const player = this.players.get(record.playerId);
       return {

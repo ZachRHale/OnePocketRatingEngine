@@ -1,112 +1,81 @@
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { describe, it, expect } from "vitest";
+import { SimpleProvisionalRatingEngine } from "../../src/index.js";
 import {
-  SimpleProvisionalRatingEngine,
-  type PlayerRating,
-} from "../../src/index.js";
-import { match, player, win, wins } from "../factories.js";
-import {
-  ballSpotForRatings,
-  DEFAULT_HANDICAP_TABLE,
+  buildSchedule,
+  frozenRatingsForSession,
   LeagueService,
 } from "../../src/league/index.js";
+import { loadScenario } from "../scenarios/loadScenario.js";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const dataDir = join(here, "..", "scenarios", "data");
 
 const engine = () => new SimpleProvisionalRatingEngine();
 
-function ratingOf(ratings: PlayerRating[], id: string): PlayerRating {
-  const r = ratings.find((x) => x.playerId === id);
-  if (!r) throw new Error(`no rating for ${id}`);
-  return r;
-}
-
 describe("Simulated League", () => {
   describe("simulated scenarios", () => {
-    it("runs an entire season", () => {
-      const players = [
-        player("Jay", 622, "Jay Winters"),
-        player("Zach", 450, "Zach Hale"),
-        player("Wiley", 553, "Michael Wiley"),
-        player("Lucas", 506, "Lucas Darocha"),
-        player("Jesse", 534, "Jesse Daschbach"),
-        player("Jason", 536, "Jason Hobert"),
-        player("Will", 500, "Will ?"),
-        player("Jeff", 440, "Jeff Shelquist"),
-        player("George", 433, "George McMillian"),
-      ];
-      const matches = [
-        match({
-          id: "m1",
-          home: "Jay",
-          away: "Zach",
-          games: [
-            { winner: "Jay", loserBalls: 3 },
-            { winner: "Zach", loserBalls: 7 },
-            { winner: "Zach", loserBalls: 7 },
-            { winner: "Jay", loserBalls: 4 },
-            { winner: "Jay", loserBalls: 0 },
-          ],
-          ballSpot: ballSpotForRatings(DEFAULT_HANDICAP_TABLE, 622, 450),
-        }),
-        match({
-          id: "m2",
-          home: "Jay",
-          away: "Wiley",
-          games: [
-            { winner: "Jay", loserBalls: 5 },
-            { winner: "Wiley", loserBalls: 3 },
-            { winner: "Wiley", loserBalls: 6 },
-            { winner: "Wiley", loserBalls: 5 },
-          ],
-          ballSpot: ballSpotForRatings(DEFAULT_HANDICAP_TABLE, 622, 553),
-        }),
-        match({
-          id: "m3",
-          home: "Jay",
-          away: "Lucas",
-          games: [
-            { winner: "Jay", loserBalls: 5 },
-            { winner: "Lucas", loserBalls: 7 },
-            { winner: "Lucas", loserBalls: 3 },
-            { winner: "Jay", loserBalls: 0 },
-            { winner: "Jay", loserBalls: 2 },
-          ],
-          ballSpot: ballSpotForRatings(DEFAULT_HANDICAP_TABLE, 622, 506),
-        }),
-        match({
-          id: "m4",
-          home: "Wiley",
-          away: "Zach",
-          games: [
-            { winner: "Wiley", loserBalls: 5 },
-            { winner: "Zach", loserBalls: 7 },
-            { winner: "Wiley", loserBalls: 2 },
-            { winner: "Wiley", loserBalls: 3 },
-          ],
-          ballSpot: ballSpotForRatings(DEFAULT_HANDICAP_TABLE, 553, 450),
-        }),
-        match({
-          id: "m5",
-          home: "Jay",
-          away: "Lucas",
-          games: [
-            { winner: "Jay", loserBalls: 5 },
-            { winner: "Lucas", loserBalls: 7 },
-            { winner: "Lucas", loserBalls: 3 },
-            { winner: "Jay", loserBalls: 0 },
-            { winner: "Jay", loserBalls: 2 },
-          ],
-          ballSpot: ballSpotForRatings(DEFAULT_HANDICAP_TABLE, 622, 506),
-        }),
-      ];
+    it("runs a multi-session season", () => {
+      // Roster, matches, sessions and ball spots all come from CSV — swap the
+      // folder to run the same assertions against a different data set.
+      const { players, matches, sessions } = loadScenario(
+        join(dataDir, "season-2026"),
+      );
+
       const ratings = engine().calculateRatings({ players, matches });
+      const service = new LeagueService(players, ratings, matches);
 
-      //   const Jay = ratingOf(ratings, "Jay");
-
+      // Standings reset each session; ratings carry across them.
+      for (const session of sessions) {
+        console.log(`\n=== ${session.label} standings ===`);
+        console.log(service.standings(session.id));
+      }
+      console.log("\n=== all-time ratings ===");
       console.log(ratings);
 
-      // Standings now need the raw matches too (win% + loss-closeness ranking).
-      const service = () => new LeagueService(players, ratings, matches);
+      // Every session's standings still list the full roster.
+      for (const session of sessions) {
+        expect(service.standings(session.id)).toHaveLength(players.length);
+      }
+    });
 
-      console.log(service().standings());
+    it("freezes ball spots per session from carried-over ratings", () => {
+      const { players, matches, sessions } = loadScenario(
+        join(dataDir, "season-2026"),
+      );
+
+      // Summer's spots use ratings frozen at summer's start, i.e. after spring —
+      // so Jay/Lucas need not be seeded at their Fargo gap anymore.
+      const summer = sessions.find((s) => s.id === "summer-2026")!;
+      const frozen = frozenRatingsForSession(
+        engine(),
+        players,
+        matches,
+        sessions,
+        summer.id,
+      );
+      const jay = frozen.find((r) => r.playerId === "Jay")!;
+      expect(jay.gamesPlayed).toBeGreaterThan(0); // reflects spring play
+    });
+
+    it("generates weekly matchups with byes for a session roster", () => {
+      const { sessions } = loadScenario(join(dataDir, "season-2026"));
+      const roster = ["Jay", "Zach", "Wiley", "Lucas", "Jesse", "Jason", "Will", "Jeff", "George"];
+
+      // Rotate the bye offset by session index so extra byes move across sessions.
+      const schedule = buildSchedule(roster, roster.length, {
+        rotation: sessions.length,
+      });
+      console.log(
+        schedule.map((w) => ({
+          week: w.week,
+          bye: w.bye,
+          matchups: w.matches.map((m) => `${m.home} vs ${m.away}`),
+        })),
+      );
+
+      expect(new Set(schedule.map((w) => w.bye))).toEqual(new Set(roster));
     });
   });
 });

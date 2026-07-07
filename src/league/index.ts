@@ -16,3 +16,14 @@ export {
   ballSpotForRatings,
 } from "./handicapTable.js";
 export type { HandicapTier } from "./handicapTable.js";
+export { buildSchedule } from "./schedule.js";
+export type {
+  ScheduledMatch,
+  WeekSchedule,
+  ScheduleOptions,
+} from "./schedule.js";
+export {
+  matchesInSession,
+  frozenRatingsForSession,
+  ratingsAfterSession,
+} from "./sessions.js";

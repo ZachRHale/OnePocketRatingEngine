@@ -6,6 +6,7 @@ import {
   type MatchId,
   type Player,
   type PlayerId,
+  type SessionId,
 } from "../src/index.js";
 
 const EVEN_SPOT: BallSpot = { home: 8, away: 8 };
@@ -51,6 +52,7 @@ export function match(opts: {
   games: GameResult[];
   ballSpot?: BallSpot;
   week?: number;
+  sessionId?: SessionId;
 }): Match {
   const ballSpot = opts.ballSpot ?? EVEN_SPOT;
   const games: Game[] = opts.games.map((result, i) => {
@@ -72,6 +74,7 @@ export function match(opts: {
   return {
     id: opts.id,
     date: new Date("2026-01-01T00:00:00Z"),
+    sessionId: opts.sessionId ?? "s1",
     week: opts.week ?? 1,
     home: opts.home,
     away: opts.away,

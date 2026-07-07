@@ -1,4 +1,4 @@
-import type { MatchId, PlayerId } from "./ids.js";
+import type { MatchId, PlayerId, SessionId } from "./ids.js";
 import type { BallSpot } from "./ballSpot.js";
 import type { Game } from "./game.js";
 
@@ -29,7 +29,10 @@ export interface MatchScore {
 export interface Match {
   id: MatchId;
   date: Date;
-  /** League week number this match belongs to. */
+
+  /** The session this match belongs to. Standings and rating freezes scope to it. */
+  sessionId: SessionId;
+  /** Week number WITHIN the session (1-based), not an all-time counter. */
   week: number;
 
   home: PlayerId;
