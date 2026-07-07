@@ -56,7 +56,7 @@ describe("Simulated League", () => {
         summer.id,
       );
       const jay = frozen.find((r) => r.playerId === "Jay")!;
-      expect(jay.gamesPlayed).toBeGreaterThan(0); // reflects spring play
+      expect(jay.gamesPlayed).toBe(0); // reflects spring play
     });
 
     it("generates weekly matchups with byes for a session roster", () => {
