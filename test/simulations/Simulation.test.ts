@@ -61,7 +61,17 @@ describe("Simulated League", () => {
 
     it("generates weekly matchups with byes for a session roster", () => {
       const { sessions } = loadScenario(join(dataDir, "season-2026"));
-      const roster = ["Jay", "Zach", "Wiley", "Lucas", "Jesse", "Jason", "Will", "Jeff", "George"];
+      const roster = [
+        "Jay",
+        "Zach",
+        "Wiley",
+        "Lucas",
+        "Jesse",
+        "Jason",
+        "Will",
+        "Jeff",
+        "George",
+      ];
 
       // Rotate the bye offset by session index so extra byes move across sessions.
       const schedule = buildSchedule(roster, roster.length, {
