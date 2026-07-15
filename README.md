@@ -63,6 +63,31 @@ league.ballSpotFor("alice", "bob"); // tonight's spot, e.g. { home: 8, away: 7 }
 league.isProvisional("bob");
 ```
 
+## Running the league (web app)
+
+A thin web front end lives in [`server/`](server/). It is a *consumer* of the
+library — it holds no rating or league logic of its own — and it persists to the
+same append-only CSV game log through the `LeagueRepository` seam
+([`src/store/`](src/store/)), so swapping CSV for a database later touches one
+file and nothing above it.
+
+```bash
+npm run serve     # http://localhost:8080  (no extra dependencies)
+```
+
+- **Data dir:** `players.csv` + `games.csv`. Defaults to
+  `test/scenarios/data/season-2026`; override with `LEAGUE_DATA_DIR`. Port via
+  `PORT`.
+- **What it does:** shows per-session standings and each player's session-frozen
+  rating, looks up tonight's ball spot for any pairing, and records a match
+  (appends game rows, then recomputes everything from history).
+- Ball spots always use ratings **frozen at the start of the active session**,
+  per the league policy — recording more matches within a session never shifts
+  that session's spots.
+
+The store is also what the test scenarios load through, so fixtures exercise the
+real persistence path rather than a parallel loader.
+
 ## The current rating engine
 
 `SimpleProvisionalRatingEngine` is a deliberately simple first pass: per-game

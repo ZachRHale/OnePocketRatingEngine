@@ -15,6 +15,8 @@
  *   const league = new LeagueService(players, ratings);
  *   league.standings();
  *   league.ballSpotFor(homeId, awayId);
+ *
+ * Persistence (Layer 0) is behind the `LeagueRepository` seam in store/.
  */
 
 // Layer 1 — Raw Match Data
@@ -25,3 +27,6 @@ export * from "./rating/index.js";
 
 // Layer 3 — League Logic
 export * from "./league/index.js";
+
+// Persistence — append-only game log behind a swappable repository.
+export * from "./store/index.js";

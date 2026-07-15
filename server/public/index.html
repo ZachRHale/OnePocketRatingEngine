@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>One Pocket League</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --panel: #f5f6f8;
+        --border: #dfe2e8;
+        --text: #1a1c20;
+        --muted: #666b74;
+        --accent: #2f6feb;
+        --good: #1a8f4c;
+        --warn: #b26a00;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14161a;
+          --panel: #1d2026;
+          --border: #2c3038;
+          --text: #e6e8ec;
+          --muted: #9aa0aa;
+          --accent: #5b8cff;
+          --good: #4cc27a;
+          --warn: #e0a13a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 12px 20px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--border);
+      }
+      header h1 { font-size: 20px; margin: 0; }
+      header .sub { color: var(--muted); font-size: 13px; }
+      main {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+        padding: 24px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      @media (min-width: 860px) {
+        main { grid-template-columns: 1.4fr 1fr; }
+        .full { grid-column: 1 / -1; }
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px 18px;
+      }
+      section h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: .02em; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      tr:last-child td { border-bottom: none; }
+      .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--warn); }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+      select, input, button {
+        font: inherit;
+        color: var(--text);
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        padding: 7px 9px;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--border); font-weight: 500; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+      .row > div { flex: 1 1 120px; }
+      .spot { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .spot small { font-size: 13px; font-weight: 400; color: var(--muted); }
+      .games { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+      .game { display: flex; gap: 8px; align-items: center; }
+      .game select, .game input { flex: 1; }
+      .msg { margin-top: 10px; font-size: 13px; min-height: 18px; }
+      .msg.err { color: var(--warn); }
+      .msg.ok { color: var(--good); }
+      .hint { color: var(--muted); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🎱 One Pocket League</h1>
+      <div class="sub">
+        Session:
+        <select id="session"></select>
+        <span id="sessionMeta"></span>
+      </div>
+    </header>
+
+    <main>
+      <section class="full">
+        <h2>Standings — <span id="standingsSession"></span></h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th class="num">#</th><th>Player</th>
+                <th class="num">GP</th><th class="num">W</th><th class="num">L</th>
+                <th class="num">Win%</th><th class="num">Balls</th>
+                <th class="num">Rating</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="standings"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>Tonight's ball spot</h2>
+        <div class="row">
+          <div>
+            <label>Home</label>
+            <select id="spotHome"></select>
+          </div>
+          <div>
+            <label>Away</label>
+            <select id="spotAway"></select>
+          </div>
+        </div>
+        <p class="spot" id="spotResult">—</p>
+        <p class="hint">Spot uses each player's rating frozen at the start of this session.</p>
+      </section>
+
+      <section>
+        <h2>Record a match</h2>
+        <div class="row">
+          <div>
+            <label>Home</label>
+            <select id="mHome"></select>
+          </div>
+          <div>
+            <label>Away</label>
+            <select id="mAway"></select>
+          </div>
+          <div style="flex:0 0 80px">
+            <label>Week</label>
+            <input id="mWeek" type="number" min="1" value="1" />
+          </div>
+        </div>
+        <p class="hint" id="mSpot">Pick two players to see the spot.</p>
+        <div class="games" id="games"></div>
+        <button class="secondary" id="addGame" type="button">+ Add game</button>
+        <div style="margin-top:12px">
+          <button id="submit" type="button">Save match</button>
+        </div>
+        <div class="msg" id="mMsg"></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let state = null;
+      let spot = null; // current spot for the match-entry pairing
+
+      async function api(path, opts) {
+        const res = await fetch(path, opts);
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || res.statusText);
+        return body;
+      }
+
+      function fillPlayers(sel, players, selected) {
+        sel.innerHTML = players
+          .map((p) => `<option value="${p.id}"${p.id === selected ? " selected" : ""}>${p.name}</option>`)
+          .join("");
+      }
+
+      function pct(x) { return (x * 100).toFixed(0) + "%"; }
+
+      function renderStandings() {
+        $("standingsSession").textContent = state.activeSessionId;
+        const ratingById = new Map(state.frozenRatings.map((r) => [r.playerId, r]));
+        $("standings").innerHTML = state.standings
+          .map((s) => {
+            const r = ratingById.get(s.playerId);
+            const prov = r && r.provisional ? '<span class="tag">provisional</span>' : "";
+            return `<tr>
+              <td class="num">${s.rank}</td>
+              <td>${s.name}</td>
+              <td class="num">${s.gamesPlayed}</td>
+              <td class="num">${s.gamesWon}</td>
+              <td class="num">${s.gamesLost}</td>
+              <td class="num">${pct(s.winPct)}</td>
+              <td class="num">${s.ballsMade}</td>
+              <td class="num">${s.leagueRating}</td>
+              <td>${prov}</td>
+            </tr>`;
+          })
+          .join("");
+      }
+
+      function renderSessions() {
+        const sel = $("session");
+        const ids = state.sessions.map((s) => s.id);
+        if (!ids.includes(state.activeSessionId)) ids.push(state.activeSessionId);
+        sel.innerHTML = ids.map((id) => `<option value="${id}"${id === state.activeSessionId ? " selected" : ""}>${id}</option>`).join("");
+        const s = state.sessions.find((x) => x.id === state.activeSessionId);
+        $("sessionMeta").textContent = s ? `· ${s.players.length} players · ${s.weeks} weeks played` : "· new session";
+      }
+
+      async function refresh(sessionId) {
+        const q = sessionId ? `?session=${encodeURIComponent(sessionId)}` : "";
+        state = await api("/api/state" + q);
+        renderSessions();
+        renderStandings();
+        const players = state.players;
+        const cur = (sel) => sel.value;
+        // Preserve selections where possible.
+        const keep = { sh: cur($("spotHome")), sa: cur($("spotAway")), mh: cur($("mHome")), ma: cur($("mAway")) };
+        fillPlayers($("spotHome"), players, keep.sh || players[0]?.id);
+        fillPlayers($("spotAway"), players, keep.sa || players[1]?.id);
+        fillPlayers($("mHome"), players, keep.mh || players[0]?.id);
+        fillPlayers($("mAway"), players, keep.ma || players[1]?.id);
+        await updateSpotLookup();
+        await updateMatchSpot();
+      }
+
+      async function updateSpotLookup() {
+        const home = $("spotHome").value, away = $("spotAway").value;
+        if (!home || !away || home === away) { $("spotResult").textContent = "—"; return; }
+        try {
+          const r = await api(`/api/ballspot?session=${encodeURIComponent(state.activeSessionId)}&home=${home}&away=${away}`);
+          $("spotResult").innerHTML = `${r.formatted} <small>(${home} ${r.homeRating} · ${away} ${r.awayRating})</small>`;
+        } catch (e) { $("spotResult").textContent = e.message; }
+      }
+
+      async function updateMatchSpot() {
+        const home = $("mHome").value, away = $("mAway").value;
+        if (!home || !away || home === away) { spot = null; $("mSpot").textContent = "Pick two different players."; return; }
+        try {
+          const r = await api(`/api/ballspot?session=${encodeURIComponent(state.activeSessionId)}&home=${home}&away=${away}`);
+          spot = r.spot;
+          $("mSpot").textContent = `Ball spot ${r.formatted} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
+        } catch (e) { spot = null; $("mSpot").textContent = e.message; }
+        renderGameRows();
+      }
+
+      function gameRow() {
+        const home = $("mHome").value, away = $("mAway").value;
+        const div = document.createElement("div");
+        div.className = "game";
+        div.innerHTML = `
+          <select class="gWinner">
+            <option value="${home}">${home} won</option>
+            <option value="${away}">${away} won</option>
+          </select>
+          <input class="gLoser" type="number" min="0" value="0" title="Balls the loser made" />`;
+        return div;
+      }
+
+      function renderGameRows() {
+        // Keep existing rows; ensure at least 3 (race to 3 minimum).
+        const box = $("games");
+        while (box.children.length < 3) box.appendChild(gameRow());
+      }
+
+      async function submitMatch() {
+        $("mMsg").className = "msg";
+        $("mMsg").textContent = "Saving…";
+        const games = [...$("games").querySelectorAll(".game")].map((row) => ({
+          winner: row.querySelector(".gWinner").value,
+          loserBalls: Number(row.querySelector(".gLoser").value),
+        }));
+        try {
+          const body = {
+            sessionId: state.activeSessionId,
+            week: Number($("mWeek").value),
+            home: $("mHome").value,
+            away: $("mAway").value,
+            games,
+          };
+          const res = await api("/api/matches", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          $("mMsg").className = "msg ok";
+          $("mMsg").textContent = `Saved ${res.matchId}. Standings updated.`;
+          $("games").innerHTML = "";
+          await refresh(state.activeSessionId);
+        } catch (e) {
+          $("mMsg").className = "msg err";
+          $("mMsg").textContent = e.message;
+        }
+      }
+
+      $("session").addEventListener("change", (e) => refresh(e.target.value));
+      $("spotHome").addEventListener("change", updateSpotLookup);
+      $("spotAway").addEventListener("change", updateSpotLookup);
+      $("mHome").addEventListener("change", updateMatchSpot);
+      $("mAway").addEventListener("change", updateMatchSpot);
+      $("addGame").addEventListener("click", () => $("games").appendChild(gameRow()));
+      $("submit").addEventListener("click", submitMatch);
+
+      refresh().catch((e) => { $("mMsg").className = "msg err"; $("mMsg").textContent = e.message; });
+    </script>
+  </body>
+</html>
