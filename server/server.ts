@@ -74,20 +74,35 @@ function resolveSession(data: LeagueData, requested: string | null): SessionId {
 function stateFor(sessionId: SessionId): unknown {
   const data = store.load();
   const activeSessionId = resolveSession(data, sessionId);
+  const isSession = data.sessions.some((s) => s.id === activeSessionId);
 
-  const frozen = frozenRatingsFor(data, activeSessionId);
-  const sessionLeague = new LeagueService(data.players, frozen, data.matches, {
-    handicapTable,
-  });
-
-  // All-time view uses ratings folded over the entire history.
+  // Two distinct rating clocks land in the standings:
+  //   Live  — folded over every game to date. This is the number that moves and
+  //           the one that decides provisional status, confidence and trend.
+  //   Spot  — frozen at this session's start; it sets ball spots all session and
+  //           is shown for reference. It does NOT change as the session is played.
   const current = engine.calculateRatings({
     players: data.players,
     matches: data.matches,
   });
-  const allTimeLeague = new LeagueService(data.players, current, data.matches, {
+  const spotRatingById = new Map(
+    frozenRatingsFor(data, activeSessionId).map((r) => [
+      r.playerId,
+      r.leagueRating,
+    ]),
+  );
+
+  const league = new LeagueService(data.players, current, data.matches, {
     handicapTable,
   });
+  const standings = league
+    .standings(isSession ? activeSessionId : undefined)
+    .map((s) => ({
+      ...s,
+      // `leagueRating`, `provisional`, `confidence`, `trend` are already the
+      // live values (the service was built from `current`). Attach the spot.
+      spotRating: spotRatingById.get(s.playerId) ?? s.leagueRating,
+    }));
 
   return {
     activeSessionId,
@@ -104,21 +119,8 @@ function stateFor(sessionId: SessionId): unknown {
       weeks: s.weeks,
       players: s.playerIds,
     })),
-    frozenRatings: frozen
-      .map((r) => ({
-        playerId: r.playerId,
-        leagueRating: r.leagueRating,
-        provisional: r.provisional,
-        confidence: Math.round(r.confidence * 100),
-        trend: r.trend,
-      }))
-      .sort((a, b) => b.leagueRating - a.leagueRating),
-    standings: sessionLeague.standings(
-      data.sessions.some((s) => s.id === activeSessionId)
-        ? activeSessionId
-        : undefined,
-    ),
-    allTimeStandings: allTimeLeague.standings(),
+    standings,
+    allTimeStandings: league.standings(),
   };
 }
 

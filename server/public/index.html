@@ -121,12 +121,15 @@
                 <th class="num">#</th><th>Player</th>
                 <th class="num">GP</th><th class="num">W</th><th class="num">L</th>
                 <th class="num">Win%</th><th class="num">Balls</th>
-                <th class="num">Rating</th><th></th>
+                <th class="num" title="Rating frozen at the start of this session — sets your ball spots all session">Spot</th>
+                <th class="num" title="Current rating across all games played; becomes next session's Spot">Live</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="standings"></tbody>
           </table>
         </div>
+        <p class="hint"><b>Spot</b> = rating frozen at the session's start (locks your ball spots all session). <b>Live</b> = current rating, moves each game and becomes next session's Spot. <b>Provisional</b> shows until a player has 20 games.</p>
       </section>
 
       <section>
@@ -176,6 +179,12 @@
       let state = null;
       let spot = null; // current spot for the match-entry pairing
 
+      // Player ids are internal handles; always show the display name.
+      const nameOf = (id) => {
+        const p = state && state.players.find((x) => x.id === id);
+        return p ? p.name : id;
+      };
+
       async function api(path, opts) {
         const res = await fetch(path, opts);
         const body = await res.json();
@@ -193,11 +202,9 @@
 
       function renderStandings() {
         $("standingsSession").textContent = state.activeSessionId;
-        const ratingById = new Map(state.frozenRatings.map((r) => [r.playerId, r]));
         $("standings").innerHTML = state.standings
           .map((s) => {
-            const r = ratingById.get(s.playerId);
-            const prov = r && r.provisional ? '<span class="tag">provisional</span>' : "";
+            const prov = s.provisional ? '<span class="tag">provisional</span>' : "";
             return `<tr>
               <td class="num">${s.rank}</td>
               <td>${s.name}</td>
@@ -206,6 +213,7 @@
               <td class="num">${s.gamesLost}</td>
               <td class="num">${pct(s.winPct)}</td>
               <td class="num">${s.ballsMade}</td>
+              <td class="num">${s.spotRating}</td>
               <td class="num">${s.leagueRating}</td>
               <td>${prov}</td>
             </tr>`;
@@ -244,7 +252,7 @@
         if (!home || !away || home === away) { $("spotResult").textContent = "—"; return; }
         try {
           const r = await api(`/api/ballspot?session=${encodeURIComponent(state.activeSessionId)}&home=${home}&away=${away}`);
-          $("spotResult").innerHTML = `${r.formatted} <small>(${home} ${r.homeRating} · ${away} ${r.awayRating})</small>`;
+          $("spotResult").innerHTML = `${r.formatted} <small>(${nameOf(home)} ${r.homeRating} · ${nameOf(away)} ${r.awayRating})</small>`;
         } catch (e) { $("spotResult").textContent = e.message; }
       }
 
@@ -256,6 +264,8 @@
           spot = r.spot;
           $("mSpot").textContent = `Ball spot ${r.formatted} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
         } catch (e) { spot = null; $("mSpot").textContent = e.message; }
+        // Rebuild the game rows so their winner labels track the current pairing.
+        $("games").innerHTML = "";
         renderGameRows();
       }
 
@@ -265,15 +275,15 @@
         div.className = "game";
         div.innerHTML = `
           <select class="gWinner">
-            <option value="${home}">${home} won</option>
-            <option value="${away}">${away} won</option>
+            <option value="${home}">${nameOf(home)} won</option>
+            <option value="${away}">${nameOf(away)} won</option>
           </select>
           <input class="gLoser" type="number" min="0" value="0" title="Balls the loser made" />`;
         return div;
       }
 
       function renderGameRows() {
-        // Keep existing rows; ensure at least 3 (race to 3 minimum).
+        // Ensure at least 3 rows (a race to 3 has 3–5 games).
         const box = $("games");
         while (box.children.length < 3) box.appendChild(gameRow());
       }
@@ -299,7 +309,7 @@
             body: JSON.stringify(body),
           });
           $("mMsg").className = "msg ok";
-          $("mMsg").textContent = `Saved ${res.matchId}. Standings updated.`;
+          $("mMsg").textContent = `Saved: ${nameOf(body.home)} vs ${nameOf(body.away)}, week ${body.week}. Standings updated.`;
           $("games").innerHTML = "";
           await refresh(state.activeSessionId);
         } catch (e) {
