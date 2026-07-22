@@ -22,7 +22,7 @@ import {
   SimpleProvisionalRatingEngine,
   ballSpotForRatings,
   formatBallSpot,
-  frozenRatingsForSession,
+  spotRatingsFor,
   type LeagueData,
   type PlayerRating,
   type SessionId,
@@ -38,71 +38,106 @@ const engine = new SimpleProvisionalRatingEngine();
 const handicapTable = DEFAULT_HANDICAP_TABLE;
 
 /**
- * The ratings that govern ball spots for `sessionId`. If the session already
- * exists in the log, that's its frozen (start-of-session) rating. If it is a
- * brand-new session with no games yet, its spots freeze at the current
- * end-of-history rating — which is exactly what `frozenRatingsForSession` would
- * return once its first game is recorded, so spots never jump mid-session.
+ * The league's planned sessions, in running order. These populate the UI
+ * dropdown even before any games are recorded, so results can be entered for an
+ * upcoming season. Edit this list to add or rename seasons; a session's `id` is
+ * what gets written into games.csv, so keep it stable once it has games.
  */
-function frozenRatingsFor(
-  data: LeagueData,
-  sessionId: SessionId,
-): PlayerRating[] {
-  const known = data.sessions.some((s) => s.id === sessionId);
-  if (known) {
-    return frozenRatingsForSession(
-      engine,
-      data.players,
-      data.matches,
-      data.sessions,
-      sessionId,
-    );
-  }
-  return engine.calculateRatings({
-    players: data.players,
-    matches: data.matches,
-  });
+const KNOWN_SESSIONS: { id: string; label: string; weeks: number }[] = [
+  { id: "spring-2026", label: "Spring 2026", weeks: 12 },
+  { id: "summer-2026", label: "Summer 2026", weeks: 12 },
+  { id: "fall-2026", label: "Fall 2026", weeks: 12 },
+  { id: "winter-2026", label: "Winter 2026", weeks: 12 },
+];
+
+/** One session as the UI needs it: the planned list, plus anything already in
+ *  the data (e.g. legacy ids) appended so no recorded session is ever hidden. */
+interface SessionView {
+  id: string;
+  label: string;
+  index: number;
+  weeks: number;
+  players: string[];
+  /** Whether any games have been recorded for this session yet. */
+  hasGames: boolean;
 }
 
-/** Resolve the session to show: an explicit id, else the latest, else "session-1". */
+function sessionViews(data: LeagueData): SessionView[] {
+  const byId = new Map(data.sessions.map((s) => [s.id, s]));
+  const views: SessionView[] = [];
+  const seen = new Set<string>();
+  for (const known of KNOWN_SESSIONS) {
+    const d = byId.get(known.id);
+    views.push({
+      id: known.id,
+      label: known.label,
+      index: views.length + 1,
+      weeks: d ? d.weeks : known.weeks,
+      players: d ? d.playerIds : [],
+      hasGames: d !== undefined,
+    });
+    seen.add(known.id);
+  }
+  for (const d of data.sessions) {
+    if (seen.has(d.id)) continue;
+    views.push({
+      id: d.id,
+      label: d.label,
+      index: views.length + 1,
+      weeks: d.weeks,
+      players: d.playerIds,
+      hasGames: true,
+    });
+  }
+  return views;
+}
+
+/**
+ * The ratings that govern tonight's ball spots. Each player's spot rating is
+ * frozen at their most recent 20-game boundary and re-bases every 20 games
+ * (see `spotRatingsFor`); it is independent of sessions. A player with fewer
+ * than 20 games on record is still spotted from their Fargo seed.
+ */
+function spotRatings(data: LeagueData): PlayerRating[] {
+  return spotRatingsFor(engine, data.players, data.matches);
+}
+
+/** Resolve the session to show: an explicit id, else the latest played, else
+ *  the first planned session. */
 function resolveSession(data: LeagueData, requested: string | null): SessionId {
   if (requested) return requested;
   const latest = [...data.sessions].sort((a, b) => b.index - a.index)[0];
-  return latest?.id ?? "session-1";
+  return latest?.id ?? KNOWN_SESSIONS[0]!.id;
 }
 
 function stateFor(sessionId: SessionId): unknown {
   const data = store.load();
   const activeSessionId = resolveSession(data, sessionId);
-  const isSession = data.sessions.some((s) => s.id === activeSessionId);
 
   // Two distinct rating clocks land in the standings:
   //   Live  — folded over every game to date. This is the number that moves and
   //           the one that decides provisional status, confidence and trend.
-  //   Spot  — frozen at this session's start; it sets ball spots all session and
-  //           is shown for reference. It does NOT change as the session is played.
+  //   Spot  — each player's rating frozen at their most recent 20-game boundary;
+  //           it sets ball spots and re-bases every 20 games, not every game.
   const current = engine.calculateRatings({
     players: data.players,
     matches: data.matches,
   });
   const spotRatingById = new Map(
-    frozenRatingsFor(data, activeSessionId).map((r) => [
-      r.playerId,
-      r.leagueRating,
-    ]),
+    spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
   );
 
   const league = new LeagueService(data.players, current, data.matches, {
     handicapTable,
   });
-  const standings = league
-    .standings(isSession ? activeSessionId : undefined)
-    .map((s) => ({
-      ...s,
-      // `leagueRating`, `provisional`, `confidence`, `trend` are already the
-      // live values (the service was built from `current`). Attach the spot.
-      spotRating: spotRatingById.get(s.playerId) ?? s.leagueRating,
-    }));
+  // Always session-scoped: a session with no games yet shows the full roster at
+  // zero, which is the right "not started" view for an upcoming season.
+  const standings = league.standings(activeSessionId).map((s) => ({
+    ...s,
+    // `leagueRating`, `provisional`, `confidence`, `trend` are already the
+    // live values (the service was built from `current`). Attach the spot.
+    spotRating: spotRatingById.get(s.playerId) ?? s.leagueRating,
+  }));
 
   return {
     activeSessionId,
@@ -112,23 +147,18 @@ function stateFor(sessionId: SessionId): unknown {
       name: p.name,
       fargo: p.fargoRating,
     })),
-    sessions: data.sessions.map((s) => ({
-      id: s.id,
-      label: s.label,
-      index: s.index,
-      weeks: s.weeks,
-      players: s.playerIds,
-    })),
+    sessions: sessionViews(data),
     standings,
     allTimeStandings: league.standings(),
   };
 }
 
-/** Tonight's spot for a pairing, oriented to home/away, for a given session. */
-function ballSpot(sessionId: SessionId, home: string, away: string): unknown {
+/** Tonight's spot for a pairing, oriented to home/away. */
+function ballSpot(home: string, away: string): unknown {
   const data = store.load();
-  const frozen = frozenRatingsFor(data, sessionId);
-  const ratingById = new Map(frozen.map((r) => [r.playerId, r.leagueRating]));
+  const ratingById = new Map(
+    spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
+  );
   const hr = ratingById.get(home);
   const ar = ratingById.get(away);
   if (hr === undefined || ar === undefined) {
@@ -171,10 +201,11 @@ function recordMatch(body: RecordMatchBody): unknown {
     throw new HttpError(400, "week must be a positive integer");
   }
 
-  // Validate each game against the spot in effect this session before writing.
+  // Validate each game against the spot in effect right now before writing.
   const data = store.load();
-  const frozen = frozenRatingsFor(data, sessionId);
-  const ratingById = new Map(frozen.map((r) => [r.playerId, r.leagueRating]));
+  const ratingById = new Map(
+    spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
+  );
   const hr = ratingById.get(home);
   const ar = ratingById.get(away);
   if (hr === undefined || ar === undefined) {
@@ -280,14 +311,10 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && path === "/api/ballspot") {
       const home = url.searchParams.get("home") ?? "";
       const away = url.searchParams.get("away") ?? "";
-      const session = resolveSession(
-        store.load(),
-        url.searchParams.get("session"),
-      );
       if (!home || !away || home === away) {
         throw new HttpError(400, "home and away must be two different players");
       }
-      sendJson(res, 200, ballSpot(session, home, away));
+      sendJson(res, 200, ballSpot(home, away));
       return;
     }
 

@@ -30,7 +30,7 @@ export interface Match {
   id: MatchId;
   date: Date;
 
-  /** The session this match belongs to. Standings and rating freezes scope to it. */
+  /** The session this match belongs to. Standings and scheduling scope to it. */
   sessionId: SessionId;
   /** Week number WITHIN the session (1-based), not an all-time counter. */
   week: number;

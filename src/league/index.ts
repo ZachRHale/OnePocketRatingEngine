@@ -22,8 +22,5 @@ export type {
   WeekSchedule,
   ScheduleOptions,
 } from "./schedule.js";
-export {
-  matchesInSession,
-  frozenRatingsForSession,
-  ratingsAfterSession,
-} from "./sessions.js";
+export { matchesInSession } from "./sessions.js";
+export { spotRatingsFor, SPOT_REFRESH_GAMES } from "./spotRatings.js";

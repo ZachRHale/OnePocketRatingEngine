@@ -5,24 +5,23 @@ import type { PlayerId, SessionId } from "./ids.js";
  *
  * A session is one bounded run of the league — e.g. a 12-week "Spring 2026".
  * Sessions run back to back; each has its own schedule, its own standings, and
- * its own champion. They are the unit at which two things happen:
+ * its own champion. Their remaining structural role is narrow:
  *
  *   - **Standings reset.** Each session's win/loss records stand alone.
- *   - **Ratings are published (frozen).** A player's League Rating is frozen at
- *     the START of a session and used for every ball spot that session; it is
- *     only refreshed at the next session boundary. Skill still accumulates
- *     game-by-game underneath — the freeze only controls *when the new number is
- *     applied*. See `frozenRatingsForSession` in Layer 3.
+ *   - **Scheduling.** Each session builds its own round-robin (with a per-session
+ *     bye rotation).
  *
- * Sessions are ordered by {@link index} (1-based). "Rating as of the end of
- * session K" means the engine folded over every match in sessions with a lower
- * index — which is exactly the rating that seeds session K+1.
+ * Sessions no longer freeze ratings. Ball spots follow a per-player,
+ * every-20-games policy that pays no attention to session boundaries — see
+ * `spotRatingsFor` in Layer 3.
+ *
+ * Sessions are ordered by {@link index} (1-based); lower runs earlier.
  */
 export interface Session {
   id: SessionId;
   /** Human-facing name, e.g. "Spring 2026". */
   label: string;
-  /** 1-based running order. Lower runs earlier; drives rating carryover. */
+  /** 1-based running order. Lower runs earlier. */
   index: number;
   /** Scheduled length in weeks. */
   weeks: number;

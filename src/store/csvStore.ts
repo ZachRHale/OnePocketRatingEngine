@@ -14,8 +14,8 @@ import type { RatingEngine } from "../rating/index.js";
 import {
   DEFAULT_HANDICAP_TABLE,
   ballSpotForRatings,
-  frozenRatingsForSession,
   normalizeHandicapTable,
+  spotRatingsFor,
   type HandicapTier,
 } from "../league/index.js";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -86,7 +86,7 @@ const GAMES_HEADER = "session,matchId,week,home,away,winner,loserBalls";
 const MATCH_DATE = new Date("2026-01-01T00:00:00Z");
 
 export interface CsvLeagueStoreOptions {
-  /** Rating engine used to derive each session's frozen ball spots. */
+  /** Rating engine used to derive each match's spot ratings (see `spotRatingsFor`). */
   engine?: RatingEngine;
   /** Ball-spot ladder. Defaults to {@link DEFAULT_HANDICAP_TABLE}. */
   handicapTable?: readonly HandicapTier[];
@@ -100,10 +100,12 @@ export interface CsvLeagueStoreOptions {
  *                   (one row per game; `week` is 1-based WITHIN the session)
  *
  * Sessions are ordered by first appearance in games.csv (index 1, 2, …). Ball
- * spots are NOT stored — they are derived per league policy: each session's
- * spots come from the players' ratings **frozen at the start of that session**
- * (the engine folded over every earlier session). The first session uses Fargo
- * seeds; later sessions reflect prior play.
+ * spots are NOT stored — they are derived per league policy: each match's spot
+ * comes from the two players' **spot ratings**, which re-base every 20 games per
+ * player (see `spotRatingsFor`). Reconstruction is a forward pass in
+ * chronological order: each match is spotted from the ratings in effect just
+ * before it, then appended so it counts toward the next match's spots. A player
+ * with fewer than 20 games on record is still spotted from their Fargo seed.
  *
  * Reads and appends are dependency-free (no CSV library): comma-separated, no
  * quoting or escaping, so fields — player names included — must not contain
@@ -282,33 +284,31 @@ export class CsvLeagueStore implements LeagueRepository {
   }
 
   /**
-   * Forward pass: build each session's matches with the ball spots frozen at
-   * that session's start (the engine folded over all earlier sessions only).
+   * Forward pass, in chronological order (sessions by index, drafts in file
+   * order within each), assigning every match the ball spot in effect just
+   * before it: each player's spot rating re-bases every 20 games, so the spots
+   * step forward through the season rather than freezing at a session boundary.
+   * Because each match is spotted only from matches already pushed, the pass is
+   * causal — a match never depends on its own or any later result.
    */
   private assembleMatches(
     players: readonly Player[],
     sessions: readonly Session[],
     drafts: readonly MatchDraft[],
   ): Match[] {
+    const ordered = sessions.flatMap((s) =>
+      drafts.filter((d) => d.sessionId === s.id),
+    );
     const matches: Match[] = [];
-    for (const session of sessions) {
-      const frozen = frozenRatingsForSession(
-        this.engine,
-        players,
-        matches, // only earlier sessions have been pushed so far
-        sessions,
-        session.id,
+    for (const d of ordered) {
+      const spot = spotRatingsFor(this.engine, players, matches);
+      const ratingById = new Map(spot.map((r) => [r.playerId, r.leagueRating]));
+      const ballSpot = ballSpotForRatings(
+        this.handicapTable,
+        ratingById.get(d.home)!,
+        ratingById.get(d.away)!,
       );
-      const ratingById = new Map(frozen.map((r) => [r.playerId, r.leagueRating]));
-
-      for (const d of drafts.filter((x) => x.sessionId === session.id)) {
-        const ballSpot = ballSpotForRatings(
-          this.handicapTable,
-          ratingById.get(d.home)!,
-          ratingById.get(d.away)!,
-        );
-        matches.push(buildMatch(d, ballSpot));
-      }
+      matches.push(buildMatch(d, ballSpot));
     }
     return matches;
   }

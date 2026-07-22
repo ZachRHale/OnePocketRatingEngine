@@ -4,8 +4,9 @@ import { describe, it, expect } from "vitest";
 import { SimpleProvisionalRatingEngine } from "../../src/index.js";
 import {
   buildSchedule,
-  frozenRatingsForSession,
   LeagueService,
+  SPOT_REFRESH_GAMES,
+  spotRatingsFor,
 } from "../../src/league/index.js";
 import { loadScenario } from "../scenarios/loadScenario.js";
 
@@ -26,7 +27,7 @@ describe("Simulated League", () => {
       const ratings = engine().calculateRatings({ players, matches });
       const service = new LeagueService(players, ratings, matches);
 
-      // Standings reset each session; ratings carry across them.
+      // Standings reset each session; skill accumulates continuously.
       for (const session of sessions) {
         console.log(`\n=== ${session.label} standings ===`);
         console.log(service.standings(session.id));
@@ -40,23 +41,27 @@ describe("Simulated League", () => {
       }
     });
 
-    it("freezes ball spots per session from carried-over ratings", () => {
-      const { players, matches, sessions } = loadScenario(
-        join(dataDir, "season-2026"),
-      );
+    it("re-bases ball spots per player every 20 games", () => {
+      const { players, matches } = loadScenario(join(dataDir, "season-2026"));
 
-      // Summer's spots use ratings frozen at summer's start, i.e. after spring —
-      // so Jay/Lucas need not be seeded at their Fargo gap anymore.
-      const summer = sessions.find((s) => s.id === "summer-2026")!;
-      const frozen = frozenRatingsForSession(
-        engine(),
-        players,
-        matches,
-        sessions,
-        summer.id,
-      );
-      const jay = frozen.find((r) => r.playerId === "Jay")!;
-      expect(jay.gamesPlayed).toBe(0); // reflects spring play
+      const spot = spotRatingsFor(engine(), players, matches);
+      const live = engine().calculateRatings({ players, matches });
+      const liveById = new Map(live.map((r) => [r.playerId, r]));
+
+      for (const s of spot) {
+        // A player's spot is frozen at a 20-game boundary: it sits at their
+        // Fargo seed (0 games) until they clear 20, and never in between.
+        expect(s.gamesPlayed === 0 || s.gamesPlayed >= SPOT_REFRESH_GAMES).toBe(
+          true,
+        );
+        // The spot can only lag the live rating, never lead it.
+        expect(s.gamesPlayed).toBeLessThanOrEqual(
+          liveById.get(s.playerId)!.gamesPlayed,
+        );
+      }
+
+      // The scenario is long enough that at least one player has re-based.
+      expect(spot.some((s) => s.gamesPlayed >= SPOT_REFRESH_GAMES)).toBe(true);
     });
 
     it("generates weekly matchups with byes for a session roster", () => {
