@@ -49,7 +49,15 @@ export interface NewMatch {
   week: number;
   home: PlayerId;
   away: PlayerId;
+  /** The games played. Empty (and ignored) for a {@link forfeit}. */
   games: GameResultInput[];
+  /**
+   * A forfeit: the match is awarded to {@link forfeitWinner} without any games.
+   * When set, `games` is ignored and no result affects ratings or ball spots.
+   */
+  forfeit?: boolean;
+  /** Required when {@link forfeit}: the player awarded the win (must be home or away). */
+  forfeitWinner?: PlayerId;
   /** Optional explicit id; the store generates a unique one when omitted. */
   matchId?: MatchId;
 }
@@ -80,7 +88,7 @@ export interface LeagueRepository {
 const PLAYERS_FILE = "players.csv";
 const GAMES_FILE = "games.csv";
 const PLAYERS_HEADER = "id,fargo,name";
-const GAMES_HEADER = "session,matchId,week,home,away,winner,loserBalls";
+const GAMES_HEADER = "session,matchId,week,home,away,winner,loserBalls,forfeit";
 
 /** Fixed, deterministic date: dates are not persisted and the engine ignores them. */
 const MATCH_DATE = new Date("2026-01-01T00:00:00Z");
@@ -96,8 +104,14 @@ export interface CsvLeagueStoreOptions {
  * A CSV-backed {@link LeagueRepository}. Reads a directory holding two files:
  *
  *   players.csv  →  id, fargo, name
- *   games.csv    →  session, matchId, week, home, away, winner, loserBalls
+ *   games.csv    →  session, matchId, week, home, away, winner, loserBalls, forfeit
  *                   (one row per game; `week` is 1-based WITHIN the session)
+ *
+ * The trailing `forfeit` column is optional and backward-compatible: a legacy
+ * file without it reads as all-played (no forfeits), and the first append
+ * upgrades the file in place, backfilling `0` on existing rows. A forfeit is a
+ * single row with `forfeit=1`, `winner` set to the player awarded the win, and
+ * no games — it counts in the standings but is ignored by ratings and spots.
  *
  * Sessions are ordered by first appearance in games.csv (index 1, 2, …). Ball
  * spots are NOT stored — they are derived per league policy: each match's spot
@@ -140,9 +154,6 @@ export class CsvLeagueStore implements LeagueRepository {
     if (match.home === match.away) {
       throw new Error(`A player cannot play themselves: "${match.home}"`);
     }
-    if (match.games.length === 0) {
-      throw new Error("A match must have at least one game");
-    }
 
     const players = this.loadPlayers();
     const known = new Set(players.map((p) => p.id));
@@ -151,32 +162,57 @@ export class CsvLeagueStore implements LeagueRepository {
         throw new Error(`Unknown player "${id}"`);
       }
     }
-    for (const [i, g] of match.games.entries()) {
-      if (g.winner !== match.home && g.winner !== match.away) {
-        throw new Error(
-          `Game ${i + 1} winner "${g.winner}" is not in this match ` +
-            `(${match.home} vs ${match.away})`,
-        );
-      }
-      if (!Number.isFinite(g.loserBalls) || g.loserBalls < 0) {
-        throw new Error(`Game ${i + 1} loserBalls must be >= 0`);
-      }
-    }
 
     const matchId =
       match.matchId ?? this.nextMatchId(match.sessionId, match.week);
 
-    const rows = match.games.map((g) =>
-      [
-        match.sessionId,
-        matchId,
-        match.week,
-        match.home,
-        match.away,
-        g.winner,
-        g.loserBalls,
-      ].join(","),
-    );
+    // Older logs predate the `forfeit` column; upgrade in place before writing
+    // so every row in the file has the same shape.
+    this.ensureGamesForfeitColumn();
+
+    let rows: string[];
+    if (match.forfeit) {
+      const winner = match.forfeitWinner;
+      if (winner !== match.home && winner !== match.away) {
+        throw new Error(
+          `A forfeit's winner "${winner}" must be home or away ` +
+            `(${match.home} vs ${match.away})`,
+        );
+      }
+      // A forfeit is one row, no games: winner set, no balls, forfeit flag on.
+      rows = [
+        [match.sessionId, matchId, match.week, match.home, match.away, winner, 0, 1].join(
+          ",",
+        ),
+      ];
+    } else {
+      if (match.games.length === 0) {
+        throw new Error("A match must have at least one game");
+      }
+      for (const [i, g] of match.games.entries()) {
+        if (g.winner !== match.home && g.winner !== match.away) {
+          throw new Error(
+            `Game ${i + 1} winner "${g.winner}" is not in this match ` +
+              `(${match.home} vs ${match.away})`,
+          );
+        }
+        if (!Number.isFinite(g.loserBalls) || g.loserBalls < 0) {
+          throw new Error(`Game ${i + 1} loserBalls must be >= 0`);
+        }
+      }
+      rows = match.games.map((g) =>
+        [
+          match.sessionId,
+          matchId,
+          match.week,
+          match.home,
+          match.away,
+          g.winner,
+          g.loserBalls,
+          0,
+        ].join(","),
+      );
+    }
     this.appendLines(GAMES_FILE, GAMES_HEADER, rows);
     return matchId;
   }
@@ -249,7 +285,8 @@ export class CsvLeagueStore implements LeagueRepository {
       const home = row.home!;
       const away = row.away!;
       const winner = row.winner!;
-      const loserBalls = parseNumber(row.loserBalls!, `loserBalls for "${id}"`);
+      // `forfeit` is optional (legacy files omit it); "1"/"true" mean forfeit.
+      const forfeit = row.forfeit === "1" || row.forfeit === "true";
 
       requirePlayer(home, `match ${id} home`);
       requirePlayer(away, `match ${id} away`);
@@ -277,7 +314,27 @@ export class CsvLeagueStore implements LeagueRepository {
           `Match "${id}" has inconsistent session/home/away/week across its rows`,
         );
       }
-      draft.games.push({ winner, loserBalls });
+
+      if (forfeit) {
+        // A forfeit is a single self-contained row with no games. Mixing it
+        // with played games (or a second forfeit row) under one id is a
+        // malformed log.
+        if (draft.games.length > 0 || draft.forfeit) {
+          throw new Error(
+            `Forfeit match "${id}" must be a single row with no played games`,
+          );
+        }
+        draft.forfeit = true;
+        draft.forfeitWinner = winner;
+      } else {
+        if (draft.forfeit) {
+          throw new Error(
+            `Match "${id}" mixes a forfeit row with played games`,
+          );
+        }
+        const loserBalls = parseNumber(row.loserBalls!, `loserBalls for "${id}"`);
+        draft.games.push({ winner, loserBalls });
+      }
     }
 
     return order.map((id) => byId.get(id)!);
@@ -322,6 +379,35 @@ export class CsvLeagueStore implements LeagueRepository {
     return `${sessionId}-w${week}-${count + 1}`;
   }
 
+  /**
+   * Upgrade a legacy games.csv (written before the `forfeit` column existed) to
+   * the current shape, in place: append `,forfeit` to the header and `,0` to
+   * every data row. No-op when the file is absent (a fresh append writes the new
+   * header) or already has the column. Keeps every row in the file the same
+   * width so {@link parseCsv} stays happy after we append 8-column rows.
+   */
+  private ensureGamesForfeitColumn(): void {
+    const path = this.path(GAMES_FILE);
+    if (!existsSync(path)) {
+      return;
+    }
+    const lines = readFileSync(path, "utf8").split(/\r?\n/);
+    const headerIdx = lines.findIndex((l) => l.trim().length > 0);
+    if (headerIdx === -1) {
+      return; // effectively empty; the append will (re)write the header
+    }
+    const header = lines[headerIdx]!.split(",").map((h) => h.trim());
+    if (header.includes("forfeit")) {
+      return; // already current
+    }
+    const upgraded = lines.map((line, i) => {
+      if (i === headerIdx) return `${line},forfeit`;
+      if (i < headerIdx || line.trim().length === 0) return line; // blanks untouched
+      return `${line},0`;
+    });
+    writeFileSync(path, upgraded.join("\n"), "utf8");
+  }
+
   private appendLines(file: string, header: string, lines: string[]): void {
     const path = this.path(file);
     if (!existsSync(path)) {
@@ -342,6 +428,9 @@ interface MatchDraft {
   home: string;
   away: string;
   games: GameResultInput[];
+  /** A forfeit draft: awarded to {@link forfeitWinner}, with no games. */
+  forfeit?: boolean;
+  forfeitWinner?: string;
 }
 
 /**
@@ -367,6 +456,27 @@ function buildSessions(drafts: readonly MatchDraft[]): Session[] {
  * reported `loserBalls`. `winner` and `score` are derived.
  */
 function buildMatch(draft: MatchDraft, ballSpot: { home: number; away: number }): Match {
+  if (draft.forfeit) {
+    const winner = draft.forfeitWinner!;
+    const homeWon = winner === draft.home;
+    return {
+      id: draft.id,
+      date: MATCH_DATE,
+      sessionId: draft.sessionId,
+      week: draft.week,
+      home: draft.home,
+      away: draft.away,
+      ballSpot,
+      winner,
+      // Full race awarded to the winner; no games were played.
+      score: homeWon
+        ? { home: RACE_TO_GAMES, away: 0 }
+        : { home: 0, away: RACE_TO_GAMES },
+      raceToGames: RACE_TO_GAMES,
+      forfeit: true,
+      games: [],
+    };
+  }
   const games: Game[] = draft.games.map((result, i) => {
     const homeWon = result.winner === draft.home;
     const ballsMade = homeWon

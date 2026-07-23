@@ -181,9 +181,15 @@ interface RecordMatchBody {
   home?: string;
   away?: string;
   games?: { winner?: string; loserBalls?: number }[];
+  /** When true, record a forfeit (no games) awarded to {@link forfeitWinner}. */
+  forfeit?: boolean;
+  forfeitWinner?: string;
 }
 
 function recordMatch(body: RecordMatchBody): unknown {
+  if (body.forfeit) {
+    return recordForfeit(body);
+  }
   const { sessionId, week, home, away, games } = body;
   if (
     !sessionId ||
@@ -254,6 +260,45 @@ function recordMatch(body: RecordMatchBody): unknown {
     home,
     away,
     games: cleaned,
+  });
+  return { matchId, ...(stateFor(sessionId) as object) };
+}
+
+/**
+ * Record a forfeit: a win awarded to `forfeitWinner` with no games played. It
+ * shows in the standings (a full race won/lost) but is invisible to ratings and
+ * ball spots, so no spot lookup or per-game validation is needed here.
+ */
+function recordForfeit(body: RecordMatchBody): unknown {
+  const { sessionId, week, home, away, forfeitWinner } = body;
+  if (!sessionId || !home || !away) {
+    throw new HttpError(400, "sessionId, home and away are required");
+  }
+  if (home === away) {
+    throw new HttpError(400, "home and away must be two different players");
+  }
+  if (!Number.isInteger(week) || (week as number) < 1) {
+    throw new HttpError(400, "week must be a positive integer");
+  }
+  if (forfeitWinner !== home && forfeitWinner !== away) {
+    throw new HttpError(400, "forfeit winner must be the home or away player");
+  }
+
+  // Confirm both players are on the roster before writing.
+  const data = store.load();
+  const known = new Set(data.players.map((p) => p.id));
+  if (!known.has(home) || !known.has(away)) {
+    throw new HttpError(400, `Unknown player in matchup ${home} vs ${away}`);
+  }
+
+  const matchId = store.appendMatch({
+    sessionId,
+    week: week as number,
+    home,
+    away,
+    games: [],
+    forfeit: true,
+    forfeitWinner,
   });
   return { matchId, ...(stateFor(sessionId) as object) };
 }

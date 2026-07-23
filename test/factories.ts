@@ -85,3 +85,34 @@ export function match(opts: {
     games,
   };
 }
+
+/**
+ * Builds a forfeit Match: the win is awarded to `winner` (which must be `home`
+ * or `away`) with NO games played. `score` is the full race (3–0) in the
+ * winner's favor. A forfeit counts in the standings but is ignored by ratings
+ * and ball spots.
+ */
+export function forfeitMatch(opts: {
+  id: MatchId;
+  home: PlayerId;
+  away: PlayerId;
+  winner: PlayerId;
+  week?: number;
+  sessionId?: SessionId;
+}): Match {
+  const homeWon = opts.winner === opts.home;
+  return {
+    id: opts.id,
+    date: new Date("2026-01-01T00:00:00Z"),
+    sessionId: opts.sessionId ?? "s1",
+    week: opts.week ?? 1,
+    home: opts.home,
+    away: opts.away,
+    ballSpot: EVEN_SPOT,
+    winner: opts.winner,
+    score: homeWon ? { home: 3, away: 0 } : { home: 0, away: 3 },
+    raceToGames: 3,
+    forfeit: true,
+    games: [],
+  };
+}

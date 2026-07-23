@@ -47,6 +47,20 @@ export interface Match {
   /** Race target in effect for this match; defaults to {@link RACE_TO_GAMES}. */
   raceToGames: number;
 
-  /** Every game played, in order. Preserved permanently. */
+  /**
+   * A forfeit: the result was AWARDED, not played. `winner` took the match by
+   * default (a no-show, withdrawal, etc.) and `score` is the full race
+   * (`raceToGames`–0) in their favor. Critically, `games` is EMPTY: no balls
+   * were pocketed. Because ratings and the ball-spot clock are driven purely by
+   * games, a forfeit moves neither — it counts in the standings (a win and a
+   * loss) but never touches a handicap or a rating. Absent/false on a played
+   * match.
+   */
+  forfeit?: boolean;
+
+  /**
+   * Every game played, in order. Preserved permanently. Empty for a
+   * {@link forfeit}, which awards the match without any games being played.
+   */
   games: Game[];
 }

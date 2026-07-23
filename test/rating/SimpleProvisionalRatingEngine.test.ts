@@ -3,7 +3,7 @@ import {
   SimpleProvisionalRatingEngine,
   type PlayerRating,
 } from "../../src/index.js";
-import { match, player, win, wins } from "../factories.js";
+import { forfeitMatch, match, player, win, wins } from "../factories.js";
 import {
   ballSpotForRatings,
   DEFAULT_HANDICAP_TABLE,
@@ -78,6 +78,41 @@ describe("SimpleProvisionalRatingEngine", () => {
       const first = engine().calculateRatings({ players, matches });
       const second = engine().calculateRatings({ players, matches });
       expect(first).toEqual(second);
+    });
+  });
+
+  describe("forfeits", () => {
+    it("leaves ratings, games played, provisional and trend untouched", () => {
+      const players = [player("a", 506), player("b", 450)];
+      const only = engine().calculateRatings({
+        players,
+        matches: [forfeitMatch({ id: "f1", home: "a", away: "b", winner: "a" })],
+      });
+      const a = ratingOf(only, "a");
+      const b = ratingOf(only, "b");
+      // A forfeit is awarded, not played: nothing about the rating moves.
+      expect(a.leagueRating).toBe(506);
+      expect(b.leagueRating).toBe(450);
+      expect(a.gamesPlayed).toBe(0);
+      expect(b.gamesPlayed).toBe(0);
+      expect(a.provisional).toBe(true);
+      expect(a.trend).toBe(0);
+      expect(b.trend).toBe(0);
+    });
+
+    it("does not change the outcome when interleaved with real matches", () => {
+      const players = [player("a", 500), player("b", 500)];
+      const real = [
+        match({ id: "m1", home: "a", away: "b", games: wins("a", 3) }),
+      ];
+      const withForfeit = [
+        forfeitMatch({ id: "f1", home: "b", away: "a", winner: "b" }),
+        real[0]!,
+        forfeitMatch({ id: "f2", home: "a", away: "b", winner: "a" }),
+      ];
+      expect(engine().calculateRatings({ players, matches: withForfeit })).toEqual(
+        engine().calculateRatings({ players, matches: real }),
+      );
     });
   });
 

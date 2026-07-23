@@ -20,8 +20,11 @@ export interface PlayerRecord {
   /**
    * How close this player's LOSSES were, in [0, 1]: the average of
    * `ballsMade / target` over the games they lost (1 = reached their target,
-   * 0 = shut out). Special cases:
-   *   - undefeated (played, never lost): `1` (ideal, ranks best on a tie);
+   * 0 = shut out). Forfeit losses carry no ball data (nothing was played), so
+   * they are excluded from this average even though they still count in
+   * `gamesLost`. Special cases:
+   *   - no losses with ball data (undefeated, or every loss a forfeit): `1`
+   *     (ideal, ranks best on a tie) when the player has played, else `0`;
    *   - never played: `0` (no basis, ranks worst on a tie).
    */
   lossCloseness: number;
@@ -34,6 +37,8 @@ interface RecordAccumulator {
   gamesLost: number;
   ballsMade: number;
   lossClosenessSum: number;
+  /** Losses that carry ball data (i.e. real games, not forfeits); the closeness denominator. */
+  lossClosenessCount: number;
 }
 
 function emptyAccumulator(): RecordAccumulator {
@@ -43,6 +48,7 @@ function emptyAccumulator(): RecordAccumulator {
     gamesLost: 0,
     ballsMade: 0,
     lossClosenessSum: 0,
+    lossClosenessCount: 0,
   };
 }
 
@@ -74,6 +80,20 @@ export function computePlayerRecords(
     const home = accFor(match.home);
     const away = accFor(match.away);
 
+    // A forfeit awards the full race to the winner without any games being
+    // played: credit the win/loss (and games played) at the match level, but
+    // add no balls and no closeness data — there were no real games to measure.
+    if (match.forfeit) {
+      const awarded = match.raceToGames;
+      const winnerAcc = match.winner === match.home ? home : away;
+      const loserAcc = match.winner === match.home ? away : home;
+      winnerAcc.gamesPlayed += awarded;
+      winnerAcc.gamesWon += awarded;
+      loserAcc.gamesPlayed += awarded;
+      loserAcc.gamesLost += awarded;
+      continue;
+    }
+
     for (const game of match.games) {
       const homeWon = game.winner === match.home;
       const awayWon = game.winner === match.away;
@@ -93,10 +113,12 @@ export function computePlayerRecords(
         home.gamesWon++;
         away.gamesLost++;
         away.lossClosenessSum += closeness(game.ballsMade.away, game.target.away);
+        away.lossClosenessCount++;
       } else {
         away.gamesWon++;
         home.gamesLost++;
         home.lossClosenessSum += closeness(game.ballsMade.home, game.target.home);
+        home.lossClosenessCount++;
       }
     }
   }
@@ -119,10 +141,10 @@ function closeness(ballsMade: number, target: number): number {
 function finalize(id: PlayerId, a: RecordAccumulator): PlayerRecord {
   const winPct = a.gamesPlayed > 0 ? a.gamesWon / a.gamesPlayed : 0;
   const lossCloseness =
-    a.gamesLost > 0
-      ? a.lossClosenessSum / a.gamesLost
+    a.lossClosenessCount > 0
+      ? a.lossClosenessSum / a.lossClosenessCount
       : a.gamesPlayed > 0
-        ? 1 // undefeated: never fell short
+        ? 1 // no losses with ball data (undefeated, or losses only by forfeit)
         : 0; // never played
   return {
     playerId: id,

@@ -142,6 +142,13 @@ export class SimpleProvisionalRatingEngine implements RatingEngine {
   }
 
   private applyMatch(match: Match, state: Map<PlayerId, RatingState>): void {
+    // A forfeit is awarded, not played: no games, so no rating impact. Skipping
+    // it here (rather than folding zero games) also keeps it out of gamesPlayed,
+    // provisional/confidence progress, and the trend window — a forfeit must be
+    // invisible to the rating in every respect.
+    if (match.forfeit) {
+      return;
+    }
     if (match.home === match.away) {
       throw new Error(`A player cannot play themselves: "${match.home}"`);
     }

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>One Pocket League</title>
+    <title>Hale One Pocket (HOP) League</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -28,10 +28,17 @@
           --warn: #e0a13a;
         }
       }
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
       body {
         margin: 0;
-        font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
         background: var(--bg);
         color: var(--text);
       }
@@ -43,8 +50,14 @@
         padding: 18px 24px;
         border-bottom: 1px solid var(--border);
       }
-      header h1 { font-size: 20px; margin: 0; }
-      header .sub { color: var(--muted); font-size: 13px; }
+      header h1 {
+        font-size: 20px;
+        margin: 0;
+      }
+      header .sub {
+        color: var(--muted);
+        font-size: 13px;
+      }
       main {
         display: grid;
         grid-template-columns: 1fr;
@@ -54,8 +67,12 @@
         margin: 0 auto;
       }
       @media (min-width: 860px) {
-        main { grid-template-columns: 1.4fr 1fr; }
-        .full { grid-column: 1 / -1; }
+        main {
+          grid-template-columns: 1.4fr 1fr;
+        }
+        .full {
+          grid-column: 1 / -1;
+        }
       }
       section {
         background: var(--panel);
@@ -63,15 +80,53 @@
         border-radius: 10px;
         padding: 16px 18px;
       }
-      section h2 { font-size: 15px; margin: 0 0 12px; letter-spacing: .02em; }
-      table { width: 100%; border-collapse: collapse; font-size: 14px; }
-      th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
-      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-      tr:last-child td { border-bottom: none; }
-      .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--warn); }
-      label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 4px; }
-      select, input, button {
+      section h2 {
+        font-size: 15px;
+        margin: 0 0 12px;
+        letter-spacing: 0.02em;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      td.num,
+      th.num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .tag {
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        color: var(--warn);
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 4px;
+      }
+      select,
+      input,
+      button {
         font: inherit;
         color: var(--text);
         background: var(--bg);
@@ -86,24 +141,85 @@
         cursor: pointer;
         font-weight: 600;
       }
-      button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--border); font-weight: 500; }
-      button:disabled { opacity: .5; cursor: not-allowed; }
-      .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
-      .row > div { flex: 1 1 120px; }
-      .spot { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
-      .spot small { font-size: 13px; font-weight: 400; color: var(--muted); }
-      .games { margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
-      .game { display: flex; gap: 8px; align-items: center; }
-      .game select, .game input { flex: 1; }
-      .msg { margin-top: 10px; font-size: 13px; min-height: 18px; }
-      .msg.err { color: var(--warn); }
-      .msg.ok { color: var(--good); }
-      .hint { color: var(--muted); font-size: 12px; }
+      button.secondary {
+        background: transparent;
+        color: var(--accent);
+        border: 1px solid var(--border);
+        font-weight: 500;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+      }
+      .row > div {
+        flex: 1 1 120px;
+      }
+      .spot {
+        font-size: 26px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .spot small {
+        font-size: 13px;
+        font-weight: 400;
+        color: var(--muted);
+      }
+      .games {
+        margin: 12px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .game {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .game select,
+      .game input {
+        flex: 1;
+      }
+      .msg {
+        margin-top: 10px;
+        font-size: 13px;
+        min-height: 18px;
+      }
+      .msg.err {
+        color: var(--warn);
+      }
+      .msg.ok {
+        color: var(--good);
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .forfeit-toggle {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0 4px;
+        color: var(--text);
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .forfeit-toggle input {
+        width: auto;
+        margin: 0;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
     <header>
-      <h1>🎱 One Pocket League</h1>
+      <h1>🎱 Hale One Pocket (HOP) League</h1>
       <div class="sub">
         Session:
         <select id="session"></select>
@@ -114,22 +230,43 @@
     <main>
       <section class="full">
         <h2>Standings — <span id="standingsSession"></span></h2>
-        <div style="overflow-x:auto">
+        <div style="overflow-x: auto">
           <table>
             <thead>
               <tr>
-                <th class="num">#</th><th>Player</th>
-                <th class="num">GP</th><th class="num">W</th><th class="num">L</th>
-                <th class="num">Win%</th><th class="num">Balls</th>
-                <th class="num" title="Rating that sets your ball spots — re-based every 20 games you play">Spot</th>
-                <th class="num" title="Current rating across all games played; moves after every game">Live</th>
+                <th class="num">#</th>
+                <th>Player</th>
+                <th class="num">GP</th>
+                <th class="num">W</th>
+                <th class="num">L</th>
+                <th class="num">Win%</th>
+                <th class="num">Balls</th>
+                <th
+                  class="num"
+                  title="Rating that sets your ball spots — re-based every 20 games you play"
+                >
+                  Spot
+                </th>
+                <th
+                  class="num"
+                  title="Current rating across all games played; moves after every game"
+                >
+                  Live
+                </th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="standings"></tbody>
           </table>
         </div>
-        <p class="hint"><b>Spot</b> = the rating that sets your ball spots; it re-bases every 20 games you play and holds steady in between. <b>Live</b> = current rating, moves after every game. A new player's Spot stays at their Fargo seed until their first 20 games. <b>Provisional</b> shows until a player has 20 games.</p>
+        <p class="hint">
+          <b>Spot</b> = the rating that sets your ball spots; it re-bases every
+          20 games you play and holds steady in between. <b>Live</b> = current
+          rating, moves after every game. A new player's Spot stays at their
+          Fargo seed until their first 20 games. <b>Provisional</b> shows until
+          a player has 20 games. A <b>forfeit</b> counts as a full race won/lost
+          in W–L but never moves a rating or ball spot.
+        </p>
       </section>
 
       <section>
@@ -145,7 +282,10 @@
           </div>
         </div>
         <p class="spot" id="spotResult">—</p>
-        <p class="hint">Spot uses each player's rating, which re-bases every 20 games they play.</p>
+        <p class="hint">
+          Spot uses each player's rating, which re-bases every 20 games they
+          play.
+        </p>
       </section>
 
       <section>
@@ -159,15 +299,26 @@
             <label>Away</label>
             <select id="mAway"></select>
           </div>
-          <div style="flex:0 0 80px">
+          <div style="flex: 0 0 80px">
             <label>Week</label>
             <input id="mWeek" type="number" min="1" value="1" />
           </div>
         </div>
         <p class="hint" id="mSpot">Pick two players to see the spot.</p>
+        <label class="forfeit-toggle">
+          <input type="checkbox" id="mForfeit" />
+          Forfeit — award the win, no games played (doesn't affect ratings or
+          spots)
+        </label>
+        <div class="row" id="forfeitRow" style="display: none">
+          <div>
+            <label>Winner (awarded the match)</label>
+            <select id="mForfeitWinner"></select>
+          </div>
+        </div>
         <div class="games" id="games"></div>
         <button class="secondary" id="addGame" type="button">+ Add game</button>
-        <div style="margin-top:12px">
+        <div style="margin-top: 12px">
           <button id="submit" type="button">Save match</button>
         </div>
         <div class="msg" id="mMsg"></div>
@@ -194,18 +345,29 @@
 
       function fillPlayers(sel, players, selected) {
         sel.innerHTML = players
-          .map((p) => `<option value="${p.id}"${p.id === selected ? " selected" : ""}>${p.name}</option>`)
+          .map(
+            (p) =>
+              `<option value="${p.id}"${p.id === selected ? " selected" : ""}>${p.name}</option>`,
+          )
           .join("");
       }
 
-      function pct(x) { return (x * 100).toFixed(0) + "%"; }
+      function pct(x) {
+        return (x * 100).toFixed(0) + "%";
+      }
 
       function renderStandings() {
-        const active = state.sessions.find((s) => s.id === state.activeSessionId);
-        $("standingsSession").textContent = active ? active.label : state.activeSessionId;
+        const active = state.sessions.find(
+          (s) => s.id === state.activeSessionId,
+        );
+        $("standingsSession").textContent = active
+          ? active.label
+          : state.activeSessionId;
         $("standings").innerHTML = state.standings
           .map((s) => {
-            const prov = s.provisional ? '<span class="tag">provisional</span>' : "";
+            const prov = s.provisional
+              ? '<span class="tag">provisional</span>'
+              : "";
             return `<tr>
               <td class="num">${s.rank}</td>
               <td>${s.name}</td>
@@ -227,14 +389,25 @@
         const views = [...state.sessions];
         // Safety net: show a requested-but-unlisted session rather than hide it.
         if (!views.some((s) => s.id === state.activeSessionId)) {
-          views.push({ id: state.activeSessionId, label: state.activeSessionId, players: [], weeks: 0, hasGames: false });
+          views.push({
+            id: state.activeSessionId,
+            label: state.activeSessionId,
+            players: [],
+            weeks: 0,
+            hasGames: false,
+          });
         }
         sel.innerHTML = views
-          .map((s) => `<option value="${s.id}"${s.id === state.activeSessionId ? " selected" : ""}>${s.label}</option>`)
+          .map(
+            (s) =>
+              `<option value="${s.id}"${s.id === state.activeSessionId ? " selected" : ""}>${s.label}</option>`,
+          )
           .join("");
         const s = views.find((x) => x.id === state.activeSessionId);
         $("sessionMeta").textContent = s
-          ? (s.hasGames ? `· ${s.players.length} players · ${s.weeks} week(s) played` : "· not started yet")
+          ? s.hasGames
+            ? `· ${s.players.length} players · ${s.weeks} week(s) played`
+            : "· not started yet"
           : "";
       }
 
@@ -246,7 +419,12 @@
         const players = state.players;
         const cur = (sel) => sel.value;
         // Preserve selections where possible.
-        const keep = { sh: cur($("spotHome")), sa: cur($("spotAway")), mh: cur($("mHome")), ma: cur($("mAway")) };
+        const keep = {
+          sh: cur($("spotHome")),
+          sa: cur($("spotAway")),
+          mh: cur($("mHome")),
+          ma: cur($("mAway")),
+        };
         fillPlayers($("spotHome"), players, keep.sh || players[0]?.id);
         fillPlayers($("spotAway"), players, keep.sa || players[1]?.id);
         fillPlayers($("mHome"), players, keep.mh || players[0]?.id);
@@ -256,29 +434,81 @@
       }
 
       async function updateSpotLookup() {
-        const home = $("spotHome").value, away = $("spotAway").value;
-        if (!home || !away || home === away) { $("spotResult").textContent = "—"; return; }
+        const home = $("spotHome").value,
+          away = $("spotAway").value;
+        if (!home || !away || home === away) {
+          $("spotResult").textContent = "—";
+          return;
+        }
         try {
           const r = await api(`/api/ballspot?home=${home}&away=${away}`);
-          $("spotResult").innerHTML = `${r.formatted} <small>(${nameOf(home)} ${r.homeRating} · ${nameOf(away)} ${r.awayRating})</small>`;
-        } catch (e) { $("spotResult").textContent = e.message; }
+          $("spotResult").innerHTML =
+            `${r.formatted} <small>(${nameOf(home)} ${r.homeRating} · ${nameOf(away)} ${r.awayRating})</small>`;
+        } catch (e) {
+          $("spotResult").textContent = e.message;
+        }
+      }
+
+      const isForfeit = () => $("mForfeit").checked;
+
+      // Populate the "winner awarded" picker with the two selected players.
+      function renderForfeitWinner() {
+        const home = $("mHome").value,
+          away = $("mAway").value;
+        const keep = $("mForfeitWinner").value;
+        $("mForfeitWinner").innerHTML = [home, away]
+          .map(
+            (id) =>
+              `<option value="${id}"${id === keep ? " selected" : ""}>${nameOf(id)}</option>`,
+          )
+          .join("");
+      }
+
+      // Flip the form between "played match" and "forfeit" layouts.
+      function applyForfeitMode() {
+        const on = isForfeit();
+        $("forfeitRow").style.display = on ? "" : "none";
+        $("games").style.display = on ? "none" : "";
+        $("addGame").style.display = on ? "none" : "";
+        if (on) {
+          renderForfeitWinner();
+          $("mSpot").textContent =
+            "Forfeit: the chosen winner is awarded the match (a full race). No games played — ratings and ball spots are untouched.";
+        } else {
+          updateMatchSpot();
+        }
       }
 
       async function updateMatchSpot() {
-        const home = $("mHome").value, away = $("mAway").value;
-        if (!home || !away || home === away) { spot = null; $("mSpot").textContent = "Pick two different players."; return; }
+        // In forfeit mode there is no spot to show; just keep the winner list current.
+        if (isForfeit()) {
+          renderForfeitWinner();
+          return;
+        }
+        const home = $("mHome").value,
+          away = $("mAway").value;
+        if (!home || !away || home === away) {
+          spot = null;
+          $("mSpot").textContent = "Pick two different players.";
+          return;
+        }
         try {
           const r = await api(`/api/ballspot?home=${home}&away=${away}`);
           spot = r.spot;
-          $("mSpot").textContent = `Ball spot ${r.formatted} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
-        } catch (e) { spot = null; $("mSpot").textContent = e.message; }
+          $("mSpot").textContent =
+            `Ball spot ${r.formatted} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
+        } catch (e) {
+          spot = null;
+          $("mSpot").textContent = e.message;
+        }
         // Rebuild the game rows so their winner labels track the current pairing.
         $("games").innerHTML = "";
         renderGameRows();
       }
 
       function gameRow() {
-        const home = $("mHome").value, away = $("mAway").value;
+        const home = $("mHome").value,
+          away = $("mAway").value;
         const div = document.createElement("div");
         div.className = "game";
         div.innerHTML = `
@@ -299,26 +529,37 @@
       async function submitMatch() {
         $("mMsg").className = "msg";
         $("mMsg").textContent = "Saving…";
-        const games = [...$("games").querySelectorAll(".game")].map((row) => ({
-          winner: row.querySelector(".gWinner").value,
-          loserBalls: Number(row.querySelector(".gLoser").value),
-        }));
+        const forfeit = isForfeit();
         try {
           const body = {
             sessionId: state.activeSessionId,
             week: Number($("mWeek").value),
             home: $("mHome").value,
             away: $("mAway").value,
-            games,
           };
+          if (forfeit) {
+            body.forfeit = true;
+            body.forfeitWinner = $("mForfeitWinner").value;
+          } else {
+            body.games = [...$("games").querySelectorAll(".game")].map(
+              (row) => ({
+                winner: row.querySelector(".gWinner").value,
+                loserBalls: Number(row.querySelector(".gLoser").value),
+              }),
+            );
+          }
           const res = await api("/api/matches", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(body),
           });
           $("mMsg").className = "msg ok";
-          $("mMsg").textContent = `Saved: ${nameOf(body.home)} vs ${nameOf(body.away)}, week ${body.week}. Standings updated.`;
+          $("mMsg").textContent = forfeit
+            ? `Forfeit recorded: ${nameOf(body.forfeitWinner)} awarded the win over ${nameOf(body.forfeitWinner === body.home ? body.away : body.home)}, week ${body.week}.`
+            : `Saved: ${nameOf(body.home)} vs ${nameOf(body.away)}, week ${body.week}. Standings updated.`;
           $("games").innerHTML = "";
+          $("mForfeit").checked = false;
+          applyForfeitMode();
           await refresh(state.activeSessionId);
         } catch (e) {
           $("mMsg").className = "msg err";
@@ -331,10 +572,16 @@
       $("spotAway").addEventListener("change", updateSpotLookup);
       $("mHome").addEventListener("change", updateMatchSpot);
       $("mAway").addEventListener("change", updateMatchSpot);
-      $("addGame").addEventListener("click", () => $("games").appendChild(gameRow()));
+      $("mForfeit").addEventListener("change", applyForfeitMode);
+      $("addGame").addEventListener("click", () =>
+        $("games").appendChild(gameRow()),
+      );
       $("submit").addEventListener("click", submitMatch);
 
-      refresh().catch((e) => { $("mMsg").className = "msg err"; $("mMsg").textContent = e.message; });
+      refresh().catch((e) => {
+        $("mMsg").className = "msg err";
+        $("mMsg").textContent = e.message;
+      });
     </script>
   </body>
 </html>
