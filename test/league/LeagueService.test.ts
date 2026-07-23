@@ -103,8 +103,9 @@ describe("LeagueService", () => {
       expect(table.map((s) => s.playerId)).toEqual(["p", "q"]);
     });
 
-    it("breaks a win% tie by loss closeness (a narrow loss beats a blowout)", () => {
-      // x and y each go 1-1; x's loss was hill-hill (made 7), y's was a blowout (made 1).
+    it("breaks a win% tie by ball% (a narrow loss beats a blowout)", () => {
+      // x and y each go 1-1; x's loss was hill-hill (made 7), y's was a blowout
+      // (made 1). Wins are a full 8/8 for both, so x's higher ball% wins the tie.
       const ps = [
         player("x", 500, "Xavier"),
         player("y", 500, "Yolanda"),

@@ -239,8 +239,16 @@
                 <th class="num">GP</th>
                 <th class="num">W</th>
                 <th class="num">L</th>
-                <th class="num">Win%</th>
+                <th class="num" title="Games won ÷ games played — the primary ranking">
+                  Win%
+                </th>
                 <th class="num">Balls</th>
+                <th
+                  class="num"
+                  title="Balls made ÷ balls available across all games — the tiebreaker when Win% is equal"
+                >
+                  Ball%
+                </th>
                 <th
                   class="num"
                   title="Rating that sets your ball spots — re-based every 20 games you play"
@@ -260,6 +268,8 @@
           </table>
         </div>
         <p class="hint">
+          Ranked by <b>Win%</b> (games won); ties broken by <b>Ball%</b> (balls
+          made out of balls available, across all games).
           <b>Spot</b> = the rating that sets your ball spots; it re-bases every
           20 games you play and holds steady in between. <b>Live</b> = current
           rating, moves after every game. A new player's Spot stays at their
@@ -376,6 +386,7 @@
               <td class="num">${s.gamesLost}</td>
               <td class="num">${pct(s.winPct)}</td>
               <td class="num">${s.ballsMade}</td>
+              <td class="num" title="${s.ballsMade}/${s.ballsAvailable} balls made">${pct(s.ballPct)}</td>
               <td class="num">${s.spotRating}</td>
               <td class="num">${s.leagueRating}</td>
               <td>${prov}</td>

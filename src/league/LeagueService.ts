@@ -16,8 +16,8 @@ import { computePlayerRecords, type PlayerRecord } from "./playerRecords.js";
 
 /**
  * A player's row in the standings. Ranking is driven by actual results
- * (`winPct`, then `lossCloseness`); the rating fields are carried along for
- * display only and never influence the order.
+ * (`winPct`, then `ballPct`); the rating fields are carried along for display
+ * only and never influence the order.
  */
 export interface Standing {
   rank: number;
@@ -29,8 +29,9 @@ export interface Standing {
   gamesWon: number;
   gamesLost: number;
   winPct: number;
-  lossCloseness: number;
+  ballPct: number;
   ballsMade: number;
+  ballsAvailable: number;
 
   // Informational (from the rating engine).
   leagueRating: number;
@@ -134,9 +135,10 @@ export class LeagueService {
   }
 
   /**
-   * The standings, ranked by win percentage (desc); ties broken by how close
-   * the player's losses were (desc — a narrow loss beats a blowout), then by
-   * name. Rank is 1-based and assigned by row order.
+   * The standings, ranked by win percentage (desc); ties broken by the share of
+   * available balls the player pocketed (`ballPct`, desc — more decisive play
+   * beats a blowout loss), then by name. Rank is 1-based and assigned by row
+   * order.
    *
    * Pass a `sessionId` for that session's standings only (records reset each
    * session); omit it for all-time standings across every match. Every rostered
@@ -161,8 +163,9 @@ export class LeagueService {
         gamesWon: record.gamesWon,
         gamesLost: record.gamesLost,
         winPct: record.winPct,
-        lossCloseness: record.lossCloseness,
+        ballPct: record.ballPct,
         ballsMade: record.ballsMade,
+        ballsAvailable: record.ballsAvailable,
         leagueRating: rating?.leagueRating ?? 0,
         provisional: rating?.provisional ?? true,
         confidence: rating?.confidence ?? 0,
@@ -173,7 +176,7 @@ export class LeagueService {
     rows.sort(
       (a, b) =>
         b.winPct - a.winPct ||
-        b.lossCloseness - a.lossCloseness ||
+        b.ballPct - a.ballPct ||
         a.name.localeCompare(b.name),
     );
 

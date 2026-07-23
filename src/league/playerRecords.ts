@@ -15,19 +15,22 @@ export interface PlayerRecord {
   gamesLost: number;
   /** Total balls this player pocketed across every game. */
   ballsMade: number;
+  /**
+   * Total balls this player *could* have pocketed: the sum of their per-game
+   * target across every game played (in a win that target was reached, in a
+   * loss it was not). Forfeits add nothing — no games were played.
+   */
+  ballsAvailable: number;
   /** Games won ÷ games played. `0` when the player has played nothing. */
   winPct: number;
   /**
-   * How close this player's LOSSES were, in [0, 1]: the average of
-   * `ballsMade / target` over the games they lost (1 = reached their target,
-   * 0 = shut out). Forfeit losses carry no ball data (nothing was played), so
-   * they are excluded from this average even though they still count in
-   * `gamesLost`. Special cases:
-   *   - no losses with ball data (undefeated, or every loss a forfeit): `1`
-   *     (ideal, ranks best on a tie) when the player has played, else `0`;
-   *   - never played: `0` (no basis, ranks worst on a tie).
+   * Balls made ÷ balls available over ALL games, in [0, 1]. A win contributes a
+   * full target; a loss contributes however many balls were made. This is the
+   * standings tiebreaker after win%: among players with the same win%, the one
+   * who pocketed a larger share of the balls available to them ranks higher.
+   * `0` when the player has no ball data (never played, or only forfeits).
    */
-  lossCloseness: number;
+  ballPct: number;
 }
 
 /** Mutable accumulator used only while rolling up matches. */
@@ -36,9 +39,7 @@ interface RecordAccumulator {
   gamesWon: number;
   gamesLost: number;
   ballsMade: number;
-  lossClosenessSum: number;
-  /** Losses that carry ball data (i.e. real games, not forfeits); the closeness denominator. */
-  lossClosenessCount: number;
+  ballsAvailable: number;
 }
 
 function emptyAccumulator(): RecordAccumulator {
@@ -47,8 +48,7 @@ function emptyAccumulator(): RecordAccumulator {
     gamesWon: 0,
     gamesLost: 0,
     ballsMade: 0,
-    lossClosenessSum: 0,
-    lossClosenessCount: 0,
+    ballsAvailable: 0,
   };
 }
 
@@ -82,7 +82,7 @@ export function computePlayerRecords(
 
     // A forfeit awards the full race to the winner without any games being
     // played: credit the win/loss (and games played) at the match level, but
-    // add no balls and no closeness data — there were no real games to measure.
+    // add no balls — made or available — since there were no real games.
     if (match.forfeit) {
       const awarded = match.raceToGames;
       const winnerAcc = match.winner === match.home ? home : away;
@@ -108,17 +108,15 @@ export function computePlayerRecords(
       away.gamesPlayed++;
       home.ballsMade += game.ballsMade.home;
       away.ballsMade += game.ballsMade.away;
+      home.ballsAvailable += game.target.home;
+      away.ballsAvailable += game.target.away;
 
       if (homeWon) {
         home.gamesWon++;
         away.gamesLost++;
-        away.lossClosenessSum += closeness(game.ballsMade.away, game.target.away);
-        away.lossClosenessCount++;
       } else {
         away.gamesWon++;
         home.gamesLost++;
-        home.lossClosenessSum += closeness(game.ballsMade.home, game.target.home);
-        home.lossClosenessCount++;
       }
     }
   }
@@ -130,29 +128,17 @@ export function computePlayerRecords(
   return records;
 }
 
-/** Fraction of the target a losing player reached, clamped to [0, 1]. */
-function closeness(ballsMade: number, target: number): number {
-  if (target <= 0) {
-    return 0;
-  }
-  return Math.min(1, Math.max(0, ballsMade / target));
-}
-
 function finalize(id: PlayerId, a: RecordAccumulator): PlayerRecord {
   const winPct = a.gamesPlayed > 0 ? a.gamesWon / a.gamesPlayed : 0;
-  const lossCloseness =
-    a.lossClosenessCount > 0
-      ? a.lossClosenessSum / a.lossClosenessCount
-      : a.gamesPlayed > 0
-        ? 1 // no losses with ball data (undefeated, or losses only by forfeit)
-        : 0; // never played
+  const ballPct = a.ballsAvailable > 0 ? a.ballsMade / a.ballsAvailable : 0;
   return {
     playerId: id,
     gamesPlayed: a.gamesPlayed,
     gamesWon: a.gamesWon,
     gamesLost: a.gamesLost,
     ballsMade: a.ballsMade,
+    ballsAvailable: a.ballsAvailable,
     winPct,
-    lossCloseness,
+    ballPct,
   };
 }
