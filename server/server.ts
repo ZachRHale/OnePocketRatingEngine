@@ -94,9 +94,9 @@ function sessionViews(data: LeagueData): SessionView[] {
 
 /**
  * The ratings that govern tonight's ball spots. Each player's spot rating is
- * frozen at their most recent 20-game boundary and re-bases every 20 games
+ * frozen at their most recent 10-game boundary and re-bases every 10 games
  * (see `spotRatingsFor`); it is independent of sessions. A player with fewer
- * than 20 games on record is still spotted from their Fargo seed.
+ * than 10 games on record is still spotted from their Fargo seed.
  */
 function spotRatings(data: LeagueData): PlayerRating[] {
   return spotRatingsFor(engine, data.players, data.matches);
@@ -117,8 +117,8 @@ function stateFor(sessionId: SessionId): unknown {
   // Two distinct rating clocks land in the standings:
   //   Live  — folded over every game to date. This is the number that moves and
   //           the one that decides provisional status, confidence and trend.
-  //   Spot  — each player's rating frozen at their most recent 20-game boundary;
-  //           it sets ball spots and re-bases every 20 games, not every game.
+  //   Spot  — each player's rating frozen at their most recent 10-game boundary;
+  //           it sets ball spots and re-bases every 10 games, not every game.
   const current = engine.calculateRatings({
     players: data.players,
     matches: data.matches,

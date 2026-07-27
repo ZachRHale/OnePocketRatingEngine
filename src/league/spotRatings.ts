@@ -4,11 +4,11 @@ import type { PlayerRating, RatingEngine } from "../rating/index.js";
 /**
  * Layer 3 — League Logic.
  *
- * **Ball-spot rating policy: per-player, refreshed every 20 games.**
+ * **Ball-spot rating policy: per-player, refreshed every 10 games.**
  *
  * A player's *spot rating* — the number that sets their ball spots — is frozen
- * at their most recent 20-game boundary and only steps forward when they finish
- * another 20 games. It is NOT the live rating (which moves after every game),
+ * at their most recent 10-game boundary and only steps forward when they finish
+ * another 10 games. It is NOT the live rating (which moves after every game),
  * and it is NOT frozen for a whole session. Between a player's boundaries the
  * spot holds steady, so a spot never shifts in the middle of a stretch of play;
  * it re-bases in a single step once enough new evidence is in.
@@ -16,25 +16,25 @@ import type { PlayerRating, RatingEngine } from "../rating/index.js";
  * This is the deliberate reversal of the old "freeze per session" policy. Its
  * purpose: starting Fargo seeds are often well off a player's true one-pocket
  * speed, so a player's handicap is corrected during the season — after their
- * first 20 games and every 20 thereafter — instead of being locked in until the
+ * first 10 games and every 10 thereafter — instead of being locked in until the
  * next session boundary. The tradeoff is that a full season of spots can no
  * longer be published up front; only spots up to each player's next boundary are
  * settled.
  *
- * The cadence is intentionally the same 20 games as
+ * The cadence is intentionally the same 10 games as
  * `SimpleProvisionalRatingEngine`'s provisional threshold: a player's spot first
  * moves off their Fargo seed exactly when they stop being provisional.
  */
 
 /** Games a player must complete before their spot rating re-bases. */
-export const SPOT_REFRESH_GAMES = 20;
+export const SPOT_REFRESH_GAMES = 10;
 
 /**
  * Each player's **spot rating**: their rating as of the most recent match that
  * pushed their game count across a {@link SPOT_REFRESH_GAMES} boundary, using
  * `matches` as the shared history. Before a player's first boundary the cut is
  * empty, so they sit at their Fargo seed (provisional) — exactly the intended
- * behavior for someone with fewer than 20 games on record.
+ * behavior for someone with fewer than 10 games on record.
  *
  * Every player carries their *own* cut, so a matchup's spot blends two snapshots
  * that may have been taken at different points in the season. The engine is run

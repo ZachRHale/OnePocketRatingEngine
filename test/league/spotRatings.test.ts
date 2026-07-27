@@ -20,12 +20,12 @@ const sweeps = (n: number) =>
   );
 
 describe("spotRatingsFor", () => {
-  it("exposes the 20-game refresh cadence", () => {
-    expect(SPOT_REFRESH_GAMES).toBe(20);
+  it("exposes the 10-game refresh cadence", () => {
+    expect(SPOT_REFRESH_GAMES).toBe(10);
   });
 
-  it("holds a player at their Fargo seed until their first 20 games", () => {
-    // 3 matches = 9 games each, short of the 20-game boundary.
+  it("holds a player at their Fargo seed until their first 10 games", () => {
+    // 3 matches = 9 games each, short of the 10-game boundary.
     const spot = spotRatingsFor(engine, players, sweeps(3));
     expect(ratingOf(spot, "a").leagueRating).toBe(500);
     expect(ratingOf(spot, "a").gamesPlayed).toBe(0);
@@ -33,20 +33,20 @@ describe("spotRatingsFor", () => {
   });
 
   it("re-bases at the boundary and ignores games played since", () => {
-    // 7 matches = 21 games crosses the first boundary; matches 8–10 (to 30
-    // games) are AFTER it and must not move the spot.
-    const all = sweeps(10);
+    // 6 matches = 18 games. "a" crosses the first 10-game boundary on match 4
+    // (12 games); matches 5–6 are AFTER it and must not move the spot.
+    const all = sweeps(6);
     const spot = spotRatingsFor(engine, players, all);
 
-    // The spot equals the live rating frozen at the crossing match (the 7th).
+    // The spot equals the live rating frozen at the crossing match (the 4th).
     const atBoundary = engine.calculateRatings({
       players,
-      matches: all.slice(0, 7),
+      matches: all.slice(0, 4),
     });
     expect(ratingOf(spot, "a").leagueRating).toBe(
       ratingOf(atBoundary, "a").leagueRating,
     );
-    expect(ratingOf(spot, "a").gamesPlayed).toBe(21);
+    expect(ratingOf(spot, "a").gamesPlayed).toBe(12);
     expect(ratingOf(spot, "a").provisional).toBe(false);
 
     // The spot lags the live rating: "a" kept winning after the boundary.

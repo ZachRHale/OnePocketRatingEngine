@@ -41,7 +41,7 @@ describe("Simulated League", () => {
       }
     });
 
-    it("re-bases ball spots per player every 20 games", () => {
+    it("re-bases ball spots per player every 10 games", () => {
       const { players, matches } = loadScenario(join(dataDir, "season-2026"));
 
       const spot = spotRatingsFor(engine(), players, matches);
@@ -49,7 +49,7 @@ describe("Simulated League", () => {
       const liveById = new Map(live.map((r) => [r.playerId, r]));
 
       for (const s of spot) {
-        // A player's spot is frozen at a 20-game boundary: it sits at their
+        // A player's spot is frozen at a 10-game boundary: it sits at their
         // Fargo seed (0 games) until they clear 20, and never in between.
         expect(s.gamesPlayed === 0 || s.gamesPlayed >= SPOT_REFRESH_GAMES).toBe(
           true,

@@ -12,7 +12,7 @@ import type { PlayerId, SessionId } from "./ids.js";
  *     bye rotation).
  *
  * Sessions no longer freeze ratings. Ball spots follow a per-player,
- * every-20-games policy that pays no attention to session boundaries — see
+ * every-10-games policy that pays no attention to session boundaries — see
  * `spotRatingsFor` in Layer 3.
  *
  * Sessions are ordered by {@link index} (1-based); lower runs earlier.

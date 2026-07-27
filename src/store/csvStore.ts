@@ -18,7 +18,12 @@ import {
   spotRatingsFor,
   type HandicapTier,
 } from "../league/index.js";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -115,11 +120,11 @@ export interface CsvLeagueStoreOptions {
  *
  * Sessions are ordered by first appearance in games.csv (index 1, 2, …). Ball
  * spots are NOT stored — they are derived per league policy: each match's spot
- * comes from the two players' **spot ratings**, which re-base every 20 games per
+ * comes from the two players' **spot ratings**, which re-base every 10 games per
  * player (see `spotRatingsFor`). Reconstruction is a forward pass in
  * chronological order: each match is spotted from the ratings in effect just
  * before it, then appended so it counts toward the next match's spots. A player
- * with fewer than 20 games on record is still spotted from their Fargo seed.
+ * with fewer than 10 games on record is still spotted from their Fargo seed.
  *
  * Reads and appends are dependency-free (no CSV library): comma-separated, no
  * quoting or escaping, so fields — player names included — must not contain
@@ -181,9 +186,16 @@ export class CsvLeagueStore implements LeagueRepository {
       }
       // A forfeit is one row, no games: winner set, no balls, forfeit flag on.
       rows = [
-        [match.sessionId, matchId, match.week, match.home, match.away, winner, 0, 1].join(
-          ",",
-        ),
+        [
+          match.sessionId,
+          matchId,
+          match.week,
+          match.home,
+          match.away,
+          winner,
+          0,
+          1,
+        ].join(","),
       ];
     } else {
       if (match.games.length === 0) {
@@ -251,7 +263,9 @@ export class CsvLeagueStore implements LeagueRepository {
         throw new Error(`Duplicate player id "${id}" in ${PLAYERS_FILE}`);
       }
       known.add(id);
-      players.push(seedPlayer(id, row.name!, parseNumber(row.fargo!, `fargo for "${id}"`)));
+      players.push(
+        seedPlayer(id, row.name!, parseNumber(row.fargo!, `fargo for "${id}"`)),
+      );
     }
     return players;
   }
@@ -332,7 +346,10 @@ export class CsvLeagueStore implements LeagueRepository {
             `Match "${id}" mixes a forfeit row with played games`,
           );
         }
-        const loserBalls = parseNumber(row.loserBalls!, `loserBalls for "${id}"`);
+        const loserBalls = parseNumber(
+          row.loserBalls!,
+          `loserBalls for "${id}"`,
+        );
         draft.games.push({ winner, loserBalls });
       }
     }
@@ -343,7 +360,7 @@ export class CsvLeagueStore implements LeagueRepository {
   /**
    * Forward pass, in chronological order (sessions by index, drafts in file
    * order within each), assigning every match the ball spot in effect just
-   * before it: each player's spot rating re-bases every 20 games, so the spots
+   * before it: each player's spot rating re-bases every 10 games, so the spots
    * step forward through the season rather than freezing at a session boundary.
    * Because each match is spotted only from matches already pushed, the pass is
    * causal — a match never depends on its own or any later result.
@@ -455,7 +472,10 @@ function buildSessions(drafts: readonly MatchDraft[]): Session[] {
  * each game is their target (they had to reach it to win); the loser's is the
  * reported `loserBalls`. `winner` and `score` are derived.
  */
-function buildMatch(draft: MatchDraft, ballSpot: { home: number; away: number }): Match {
+function buildMatch(
+  draft: MatchDraft,
+  ballSpot: { home: number; away: number },
+): Match {
   if (draft.forfeit) {
     const winner = draft.forfeitWinner!;
     const homeWon = winner === draft.home;

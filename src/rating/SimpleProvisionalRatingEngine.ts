@@ -47,7 +47,7 @@ const DEFAULTS = {
   kFactor: 12,
   provisionalMultiplier: 2,
   pointsPerBall: 40,
-  provisionalGames: 20,
+  provisionalGames: 10,
   confidenceGames: 50,
   trendWindow: 3,
   marginWeight: 0.5,
