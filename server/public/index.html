@@ -200,6 +200,57 @@
         color: var(--muted);
         font-size: 12px;
       }
+      .weeks {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .week {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--bg);
+      }
+      .week h3 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted);
+        margin: 0 0 8px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .fixture {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        padding: 3px 0;
+        font-size: 14px;
+        font-variant-numeric: tabular-nums;
+      }
+      .fixture .vs {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .fixture .sp {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .fixture.done {
+        color: var(--muted);
+      }
+      .fixture.done .sp {
+        color: var(--good);
+      }
+      .divblock + .divblock {
+        margin-top: 18px;
+      }
+      .divblock > h3 {
+        font-size: 13px;
+        margin: 0 0 10px;
+      }
       .forfeit-toggle {
         display: flex;
         flex-direction: row;
@@ -223,6 +274,10 @@
       <div class="sub">
         Session:
         <select id="session"></select>
+        <span id="divisionWrap" style="display: none">
+          Division:
+          <select id="division"></select>
+        </span>
         <span id="sessionMeta"></span>
       </div>
     </header>
@@ -230,6 +285,7 @@
     <main>
       <section class="full">
         <h2>Standings — <span id="standingsSession"></span></h2>
+        <p class="hint" id="playoffSeeds" style="display: none"></p>
         <div style="overflow-x: auto">
           <table>
             <thead>
@@ -279,6 +335,33 @@
           first 10 games. <b>Provisional</b> shows until a player has 10 games.
           A <b>forfeit</b> counts as a full race won/lost in W–L but never moves
           a rating or ball spot.
+        </p>
+      </section>
+
+      <section class="full">
+        <h2>Schedule — <span id="scheduleSession"></span></h2>
+        <div id="schedule"></div>
+        <div class="row" style="margin-top: 14px">
+          <div style="flex: 0 0 auto">
+            <label>Weeks</label>
+            <input id="schWeeks" type="number" min="1" style="width: 90px" />
+          </div>
+          <div style="flex: 0 0 auto">
+            <label>&nbsp;</label>
+            <button class="secondary" id="schGenerate" type="button">
+              Generate schedule
+            </button>
+          </div>
+        </div>
+        <div class="msg" id="schMsg"></div>
+        <p class="hint">
+          Fixtures live in <b>schedule.csv</b> — generate once, then edit that
+          file by hand (or have another app write it); this page just reads it.
+          Generating again asks before discarding an existing schedule.
+          <b>Byes</b> are derived from the division roster, never stored, so they
+          always agree with the fixtures. A greyed-out row has been played.
+          Ball spots shown for later weeks are <b>today's estimate</b>: a spot
+          re-bases every 10 games a player finishes, so only week 1 is settled.
         </p>
       </section>
 
@@ -342,6 +425,9 @@
       const $ = (id) => document.getElementById(id);
       let state = null;
       let spot = null; // current spot for the match-entry pairing
+      // Which division's table to show; "" = combined (all divisions together).
+      // Held in the page because it is a view choice, not league data.
+      let division = "";
 
       // Player ids are internal handles; always show the display name.
       const nameOf = (id) => {
@@ -369,14 +455,63 @@
         return (x * 100).toFixed(0) + "%";
       }
 
+      // The division tables ride along in every /api/state response, so switching
+      // divisions is a re-render, not a round trip.
+      function scopedStandings() {
+        if (!division) return state.standings;
+        const d = (state.divisionStandings || []).find((x) => x.id === division);
+        return d ? d.standings : state.standings;
+      }
+
+      function renderDivisions() {
+        const divisions = state.divisionStandings || [];
+        // A stale selection (e.g. after switching to an undivided session) falls
+        // back to the combined table rather than showing nothing.
+        if (division && !divisions.some((d) => d.id === division)) division = "";
+        $("divisionWrap").style.display = divisions.length ? "" : "none";
+        $("division").innerHTML = [
+          `<option value=""${division === "" ? " selected" : ""}>All divisions</option>`,
+          ...divisions.map(
+            (d) =>
+              `<option value="${d.id}"${d.id === division ? " selected" : ""}>${d.label} (${d.standings.length})</option>`,
+          ),
+        ].join("");
+      }
+
+      function renderPlayoffSeeds() {
+        const seeds = state.playoffSeeds || [];
+        const box = $("playoffSeeds");
+        if (seeds.length === 0) {
+          box.style.display = "none";
+          return;
+        }
+        const label = (s) => `<b>${s.seed}</b> ${nameOf(s.playerId)}`;
+        // Two divisions, two qualifiers each: cross the semifinals so the
+        // division winners can only meet in the final.
+        const divisionsIn = new Set(seeds.map((s) => s.divisionId));
+        let text = seeds.map(label).join(" · ");
+        if (seeds.length === 4 && divisionsIn.size === 2) {
+          const [a1, a2, b1, b2] = seeds;
+          text +=
+            `<br />Semifinals: ${label(a1)} vs ${label(b2)}` +
+            ` &nbsp;·&nbsp; ${label(b1)} vs ${label(a2)}`;
+        }
+        box.innerHTML = `Qualified: ${text}`;
+        box.style.display = "";
+      }
+
       function renderStandings() {
         const active = state.sessions.find(
           (s) => s.id === state.activeSessionId,
         );
-        $("standingsSession").textContent = active
-          ? active.label
-          : state.activeSessionId;
-        $("standings").innerHTML = state.standings
+        const sessionLabel = active ? active.label : state.activeSessionId;
+        const shown = (state.divisionStandings || []).find(
+          (d) => d.id === division,
+        );
+        $("standingsSession").textContent = shown
+          ? `${sessionLabel} · ${shown.label}`
+          : sessionLabel;
+        $("standings").innerHTML = scopedStandings()
           .map((s) => {
             const prov = s.provisional
               ? '<span class="tag">provisional</span>'
@@ -418,18 +553,145 @@
           )
           .join("");
         const s = views.find((x) => x.id === state.activeSessionId);
+        const divisionCount = (state.divisionStandings || []).length;
+        const split = divisionCount ? ` · ${divisionCount} divisions` : "";
         $("sessionMeta").textContent = s
           ? s.hasGames
-            ? `· ${s.players.length} players · ${s.weeks} week(s) played`
-            : "· not started yet"
+            ? `· ${s.players.length} players${split} · ${s.weeks} week(s) played`
+            : `· ${s.players.length} players${split} · not started yet`
           : "";
       }
 
+      // The schedule is its own request: it is bigger than the standings and
+      // does not change when a result is entered, so it is not folded into
+      // /api/state.
+      let schedule = null;
+
+      function fixtureRow(m) {
+        const spot = m.formatted
+          ? m.played
+            ? `played · ${m.formatted}`
+            : m.spotSettled
+              ? m.formatted
+              : `${m.formatted}?`
+          : "";
+        return `<div class="fixture${m.played ? " done" : ""}">
+          <span>${m.homeName}</span>
+          <span class="vs">vs</span>
+          <span>${m.awayName}</span>
+          <span class="sp">${spot}</span>
+        </div>`;
+      }
+
+      function weekBlock(w) {
+        const byes = w.byes.length
+          ? `<span>bye: ${w.byes.map((b) => b.name).join(", ")}</span>`
+          : "";
+        return `<div class="week">
+          <h3><span>Week ${w.week}</span>${byes}</h3>
+          ${w.matches.map(fixtureRow).join("")}
+        </div>`;
+      }
+
+      function renderSchedule() {
+        $("scheduleSession").textContent = schedule
+          ? schedule.label
+          : state.activeSessionId;
+        if (!schedule || schedule.total === 0) {
+          $("schedule").innerHTML =
+            '<p class="hint">Nothing scheduled for this session yet.</p>';
+          return;
+        }
+        // Honor the division filter, but never hide fixtures: a cross-division
+        // pairing from a hand edit gets its own block rather than disappearing.
+        const shown = division
+          ? schedule.divisions.filter((d) => d.id === division)
+          : schedule.divisions;
+        const blocks = shown
+          .filter((d) => d.weeks.length > 0)
+          .map(
+            (d) => `<div class="divblock">
+              <h3>${d.label} — ${d.playedCount}/${d.fixtureCount} played</h3>
+              <div class="weeks">${d.weeks.map(weekBlock).join("")}</div>
+            </div>`,
+          );
+        if (schedule.ungrouped.length) {
+          blocks.push(`<div class="divblock">
+            <h3>Not in any division (${schedule.ungrouped.length})</h3>
+            <div class="weeks">${schedule.ungrouped
+              .map(
+                (f) =>
+                  `<div class="fixture"><span>Week ${f.week}</span>
+                   <span>${f.homeName}</span><span class="vs">vs</span>
+                   <span>${f.awayName}</span></div>`,
+              )
+              .join("")}</div>
+          </div>`);
+        }
+        $("schedule").innerHTML =
+          blocks.join("") ||
+          '<p class="hint">Nothing scheduled for this division yet.</p>';
+      }
+
+      async function loadSchedule(sessionId) {
+        const params = new URLSearchParams();
+        if (sessionId) params.set("session", sessionId);
+        schedule = await api(
+          "/api/schedule" + (params.toString() ? `?${params}` : ""),
+        );
+        const active = state.sessions.find((x) => x.id === state.activeSessionId);
+        $("schWeeks").value = schedule.plannedWeeks || (active ? active.weeks : 9);
+        renderSchedule();
+      }
+
+      async function generateSchedule() {
+        const weeks = Number($("schWeeks").value);
+        const existing = schedule ? schedule.total : 0;
+        if (existing > 0) {
+          const ok = confirm(
+            `This session already has ${existing} fixture(s) in schedule.csv.` +
+              ` Regenerating discards them, including any hand edits. Continue?`,
+          );
+          if (!ok) return;
+        }
+        $("schMsg").className = "msg";
+        $("schMsg").textContent = "Generating…";
+        try {
+          const res = await api("/api/schedule", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              sessionId: state.activeSessionId,
+              weeks,
+              replace: existing > 0,
+            }),
+          });
+          schedule = res;
+          renderSchedule();
+          $("schMsg").className = "msg ok";
+          $("schMsg").textContent =
+            `Wrote ${res.written} fixtures to schedule.csv` +
+            (res.replaced ? ` (replaced ${res.replaced})` : "") +
+            `. Edit that file to adjust it.`;
+        } catch (e) {
+          $("schMsg").className = "msg err";
+          $("schMsg").textContent = e.message;
+        }
+      }
+
       async function refresh(sessionId) {
-        const q = sessionId ? `?session=${encodeURIComponent(sessionId)}` : "";
+        const params = new URLSearchParams();
+        if (sessionId) params.set("session", sessionId);
+        if (division) params.set("division", division);
+        const q = params.toString() ? `?${params}` : "";
         state = await api("/api/state" + q);
+        // The server drops a division that does not exist this session.
+        division = state.activeDivisionId || "";
+        renderDivisions();
         renderSessions();
+        renderPlayoffSeeds();
         renderStandings();
+        await loadSchedule(state.activeSessionId);
         const players = state.players;
         const cur = (sel) => sel.value;
         // Preserve selections where possible.
@@ -530,7 +792,7 @@
             <option value="${home}">${nameOf(home)} won</option>
             <option value="${away}">${nameOf(away)} won</option>
           </select>
-          <input class="gLoser" type="number" min="0" value="0" title="Balls the loser made" />`;
+          <input class="gLoser" type="number" value="0" title="Balls the loser made (negative if fouls put them below zero)" />`;
         return div;
       }
 
@@ -551,6 +813,7 @@
             home: $("mHome").value,
             away: $("mAway").value,
           };
+          if (division) body.division = division;
           if (forfeit) {
             body.forfeit = true;
             body.forfeitWinner = $("mForfeitWinner").value;
@@ -581,7 +844,18 @@
         }
       }
 
-      $("session").addEventListener("change", (e) => refresh(e.target.value));
+      $("session").addEventListener("change", (e) => {
+        // A new session has its own divisions; drop the old selection.
+        division = "";
+        refresh(e.target.value);
+      });
+      $("division").addEventListener("change", (e) => {
+        division = e.target.value;
+        renderDivisions();
+        renderSessions();
+        renderStandings();
+        renderSchedule();
+      });
       $("spotHome").addEventListener("change", updateSpotLookup);
       $("spotAway").addEventListener("change", updateSpotLookup);
       $("mHome").addEventListener("change", updateMatchSpot);
@@ -591,6 +865,7 @@
         $("games").appendChild(gameRow()),
       );
       $("submit").addEventListener("click", submitMatch);
+      $("schGenerate").addEventListener("click", generateSchedule);
 
       refresh().catch((e) => {
         $("mMsg").className = "msg err";

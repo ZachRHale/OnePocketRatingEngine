@@ -45,6 +45,19 @@ export interface LeagueServiceOptions {
   handicapTable?: readonly HandicapTier[];
 }
 
+/** Narrowing options for {@link LeagueService.standings}. */
+export interface StandingsOptions {
+  /**
+   * Restrict the table to these players — a division roster, or a playoff
+   * bracket. Omit for the whole league.
+   *
+   * Narrowing applies to the matches too: only games between two listed players
+   * count. That is what makes a division race a *division* race — a crossover or
+   * exhibition match against someone outside the group cannot move the table.
+   */
+  playerIds?: readonly PlayerId[];
+}
+
 /**
  * Layer 3 — League Logic.
  *
@@ -141,17 +154,29 @@ export class LeagueService {
    * order.
    *
    * Pass a `sessionId` for that session's standings only (records reset each
-   * session); omit it for all-time standings across every match. Every rostered
-   * player is always listed, even with no games that session.
+   * session); omit it for all-time standings across every match. Pass
+   * `options.playerIds` to scope the table to a division or a playoff bracket.
+   * Every player in scope is always listed, even with no games that session.
    */
-  standings(sessionId?: SessionId): Standing[] {
-    const records =
-      sessionId === undefined
-        ? this.records
-        : computePlayerRecords(
-            this.matches.filter((m) => m.sessionId === sessionId),
-            [...this.players.keys()],
-          );
+  standings(sessionId?: SessionId, options: StandingsOptions = {}): Standing[] {
+    const scope = options.playerIds;
+    const roster = scope ? [...new Set(scope)] : [...this.players.keys()];
+
+    // The unfiltered, all-time table is already cached; anything narrower —
+    // by session, by player group, or both — is rolled up on demand.
+    const needsRollup = sessionId !== undefined || scope !== undefined;
+    let records: Map<PlayerId, PlayerRecord>;
+    if (!needsRollup) {
+      records = this.records;
+    } else {
+      const inScope = new Set(roster);
+      const matches = this.matches.filter(
+        (m) =>
+          (sessionId === undefined || m.sessionId === sessionId) &&
+          (scope === undefined || (inScope.has(m.home) && inScope.has(m.away))),
+      );
+      records = computePlayerRecords(matches, roster);
+    }
 
     const rows = [...records.values()].map((record) => {
       const rating = this.ratings.get(record.playerId);

@@ -140,3 +140,97 @@ describe("CsvLeagueStore forfeits", () => {
     expect(ratings.find((r) => r.playerId === "a")!.gamesPlayed).toBe(0);
   });
 });
+
+/**
+ * A loser's ball total can be negative: in one pocket each foul costs a ball, so
+ * a player can finish below zero. The store persists that as written and the
+ * downstream layers read it back unchanged.
+ */
+describe("CsvLeagueStore negative loser balls", () => {
+  let dir: string;
+
+  const PLAYERS = ["id,fargo,name", "a,506,Ada", "b,450,Ben"].join("\n") + "\n";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "league-store-neg-"));
+    writeFileSync(join(dir, "players.csv"), PLAYERS, "utf8");
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("round-trips a negative loser total", () => {
+    const store = new CsvLeagueStore(dir);
+    store.appendMatch({
+      sessionId: "spring-2026",
+      week: 1,
+      home: "a",
+      away: "b",
+      games: [
+        { winner: "a", loserBalls: -2 },
+        { winner: "a", loserBalls: 0 },
+        { winner: "a", loserBalls: 3 },
+      ],
+    });
+
+    expect(readFileSync(join(dir, "games.csv"), "utf8")).toContain(",a,-2,0");
+
+    const { matches } = store.load();
+    const games = matches[0]!.games;
+    expect(games.map((g) => g.ballsMade.away)).toEqual([-2, 0, 3]);
+  });
+
+  it("still rejects a fractional loser total", () => {
+    const store = new CsvLeagueStore(dir);
+    expect(() =>
+      store.appendMatch({
+        sessionId: "spring-2026",
+        week: 1,
+        home: "a",
+        away: "b",
+        games: [{ winner: "a", loserBalls: -1.5 }],
+      }),
+    ).toThrow(/whole number/);
+  });
+
+  it("treats a negative total as at least a shutout for the margin swing", () => {
+    const store = new CsvLeagueStore(dir);
+    store.appendMatch({
+      sessionId: "spring-2026",
+      week: 1,
+      home: "a",
+      away: "b",
+      games: [
+        { winner: "a", loserBalls: -3 },
+        { winner: "a", loserBalls: -3 },
+        { winner: "a", loserBalls: -3 },
+      ],
+    });
+    const negative = store.load();
+
+    rmSync(join(dir, "games.csv"));
+    const shutoutStore = new CsvLeagueStore(dir);
+    shutoutStore.appendMatch({
+      sessionId: "spring-2026",
+      week: 1,
+      home: "a",
+      away: "b",
+      games: [
+        { winner: "a", loserBalls: 0 },
+        { winner: "a", loserBalls: 0 },
+        { winner: "a", loserBalls: 0 },
+      ],
+    });
+    const shutout = shutoutStore.load();
+
+    const engine = new SimpleProvisionalRatingEngine();
+    const ratingFor = (data: typeof negative) =>
+      engine
+        .calculateRatings(data)
+        .find((r) => r.playerId === "a")!.leagueRating;
+    // Decisiveness is clamped at 1, so going below zero cannot pay more than a
+    // shutout does.
+    expect(ratingFor(negative)).toBe(ratingFor(shutout));
+  });
+});

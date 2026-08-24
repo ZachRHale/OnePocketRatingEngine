@@ -10,3 +10,4 @@ export type PlayerId = string;
 export type MatchId = string;
 export type GameId = string;
 export type SessionId = string;
+export type DivisionId = string;

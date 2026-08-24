@@ -139,4 +139,94 @@ describe("LeagueService", () => {
       expect(z).toMatchObject({ gamesPlayed: 0, gamesWon: 0, winPct: 0 });
     });
   });
+
+  describe("standings scoped to a division", () => {
+    // Two two-player divisions. `a` and `b` are one division; `c` and `d` the
+    // other. The crossover match is what distinguishes a division race from a
+    // plain session filter.
+    const ps = [
+      player("a", 500, "Alice"),
+      player("b", 500, "Bob"),
+      player("c", 500, "Carol"),
+      player("d", 500, "Dave"),
+    ];
+    const rs = [rating("a", 500), rating("b", 500), rating("c", 500), rating("d", 500)];
+    const divA = ["a", "b"];
+    const ms: Match[] = [
+      // Intra-division: counts for both divisions' own tables.
+      match({ id: "m1", home: "a", away: "b", games: wins("a", 3) }),
+      match({ id: "m2", home: "c", away: "d", games: wins("c", 3) }),
+      // Crossover: must not touch either division race.
+      match({ id: "m3", home: "a", away: "c", games: wins("c", 3) }),
+    ];
+    const svc = () => new LeagueService(ps, rs, ms);
+
+    it("lists only the players in scope", () => {
+      const table = svc().standings("s1", { playerIds: divA });
+      expect(table.map((r) => r.playerId).sort()).toEqual(["a", "b"]);
+    });
+
+    it("ignores games against players outside the scope", () => {
+      // 'a' is 3-0 inside the division and 0-3 in the crossover. The division
+      // table must show the 3-0 only.
+      const a = svc()
+        .standings("s1", { playerIds: divA })
+        .find((r) => r.playerId === "a")!;
+      expect(a).toMatchObject({ gamesPlayed: 3, gamesWon: 3, gamesLost: 0 });
+      expect(a.winPct).toBe(1);
+    });
+
+    it("counts the crossover in the unscoped table", () => {
+      const a = svc()
+        .standings("s1")
+        .find((r) => r.playerId === "a")!;
+      expect(a).toMatchObject({ gamesPlayed: 6, gamesWon: 3, gamesLost: 3 });
+    });
+
+    it("ranks from 1 within the division", () => {
+      const table = svc().standings("s1", { playerIds: divA });
+      expect(table.map((r) => r.rank)).toEqual([1, 2]);
+      expect(table[0]!.playerId).toBe("a");
+    });
+
+    it("lists a drafted player who has not played yet, at zero", () => {
+      const table = svc().standings("s1", { playerIds: ["a", "b", "d"] });
+      const d = table.find((r) => r.playerId === "d")!;
+      // 'd' only played 'c', who is out of scope, so the row is empty.
+      expect(d).toMatchObject({ gamesPlayed: 0, winPct: 0 });
+    });
+
+    it("tolerates a duplicated id in the scope", () => {
+      const table = svc().standings("s1", { playerIds: ["a", "a", "b"] });
+      expect(table.map((r) => r.playerId).sort()).toEqual(["a", "b"]);
+    });
+
+    it("scopes by session and division together", () => {
+      const other: Match[] = [
+        ...ms,
+        match({
+          id: "m4",
+          sessionId: "s2",
+          home: "a",
+          away: "b",
+          games: wins("b", 3),
+        }),
+      ];
+      const s1 = new LeagueService(ps, rs, other)
+        .standings("s1", { playerIds: divA })
+        .find((r) => r.playerId === "b")!;
+      expect(s1.gamesWon).toBe(0);
+      const s2 = new LeagueService(ps, rs, other)
+        .standings("s2", { playerIds: divA })
+        .find((r) => r.playerId === "b")!;
+      expect(s2.gamesWon).toBe(3);
+    });
+
+    it("is unchanged from the default when the scope is the whole roster", () => {
+      const all = ps.map((p) => p.id);
+      expect(svc().standings("s1", { playerIds: all })).toEqual(
+        svc().standings("s1"),
+      );
+    });
+  });
 });

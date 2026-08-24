@@ -6,8 +6,14 @@
  * stored permanently. Everything here is a plain type or a tiny pure
  * constructor — no algorithm, no persistence.
  */
-export type { PlayerId, MatchId, GameId, SessionId } from "./ids.js";
-export type { Session } from "./session.js";
+export type {
+  PlayerId,
+  MatchId,
+  GameId,
+  SessionId,
+  DivisionId,
+} from "./ids.js";
+export type { Session, Division } from "./session.js";
 export type { BallSpot } from "./ballSpot.js";
 export { homeSpotAdvantage, formatBallSpot } from "./ballSpot.js";
 export type { Game } from "./game.js";

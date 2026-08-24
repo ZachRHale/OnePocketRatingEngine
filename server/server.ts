@@ -19,13 +19,21 @@ import {
   DEFAULT_HANDICAP_TABLE,
   LeagueService,
   RACE_TO_GAMES,
+  SPOT_REFRESH_GAMES,
   SimpleProvisionalRatingEngine,
   ballSpotForRatings,
+  buildSchedule,
+  draftDivisions,
+  fixturesFor,
+  fixturesToWeeks,
   formatBallSpot,
   spotRatingsFor,
+  type Division,
+  type Fixture,
   type LeagueData,
   type PlayerRating,
   type SessionId,
+  type Standing,
 } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -42,13 +50,64 @@ const handicapTable = DEFAULT_HANDICAP_TABLE;
  * dropdown even before any games are recorded, so results can be entered for an
  * upcoming season. Edit this list to add or rename seasons; a session's `id` is
  * what gets written into games.csv, so keep it stable once it has games.
+ *
+ * Each season is TWO sessions: a divisional regular season, then its playoff.
+ * The split is deliberate — standings reset per session, which is exactly what a
+ * bracket wants, and it keeps playoff results out of the division races without
+ * any special-casing. Ratings and ball spots are unaffected either way: they
+ * ignore session boundaries entirely, so a cross-division playoff match is
+ * handicapped correctly on day one.
+ *
+ * Nine weeks is one complete round-robin for a nine-player division (every
+ * player meets all eight opponents and takes exactly one bye). An eight-player
+ * division finishes its round-robin in seven and plays two rematches with
+ * home/away flipped — see `buildSchedule`. Two playoff weeks cover a four-team
+ * bracket: two semifinals, then the final.
  */
-const KNOWN_SESSIONS: { id: string; label: string; weeks: number }[] = [
-  { id: "spring-2026", label: "Spring 2026", weeks: 12 },
-  { id: "summer-2026", label: "Summer 2026", weeks: 12 },
-  { id: "fall-2026", label: "Fall 2026", weeks: 12 },
-  { id: "winter-2026", label: "Winter 2026", weeks: 12 },
+const REGULAR_SEASON_WEEKS = 9;
+const PLAYOFF_WEEKS = 2;
+
+interface KnownSession {
+  id: string;
+  label: string;
+  weeks: number;
+  /** A playoff bracket rather than a divisional regular season. */
+  playoffs?: boolean;
+}
+
+const KNOWN_SESSIONS: KnownSession[] = [
+  { id: "spring-2026", label: "Spring 2026", weeks: REGULAR_SEASON_WEEKS },
+  {
+    id: "spring-2026-playoffs",
+    label: "Spring 2026 — Playoffs",
+    weeks: PLAYOFF_WEEKS,
+    playoffs: true,
+  },
+  { id: "summer-2026", label: "Summer 2026", weeks: REGULAR_SEASON_WEEKS },
+  {
+    id: "summer-2026-playoffs",
+    label: "Summer 2026 — Playoffs",
+    weeks: PLAYOFF_WEEKS,
+    playoffs: true,
+  },
+  { id: "fall-2026", label: "Fall 2026", weeks: REGULAR_SEASON_WEEKS },
+  {
+    id: "fall-2026-playoffs",
+    label: "Fall 2026 — Playoffs",
+    weeks: PLAYOFF_WEEKS,
+    playoffs: true,
+  },
+  { id: "winter-2026", label: "Winter 2026", weeks: REGULAR_SEASON_WEEKS },
+  {
+    id: "winter-2026-playoffs",
+    label: "Winter 2026 — Playoffs",
+    weeks: PLAYOFF_WEEKS,
+    playoffs: true,
+  },
 ];
+
+/** How many players per division advance to the playoff bracket. */
+const PLAYOFF_QUALIFIERS_PER_DIVISION = 2;
 
 /** One session as the UI needs it: the planned list, plus anything already in
  *  the data (e.g. legacy ids) appended so no recorded session is ever hidden. */
@@ -58,6 +117,10 @@ interface SessionView {
   index: number;
   weeks: number;
   players: string[];
+  /** The session's divisions; empty when undivided (e.g. a playoff bracket). */
+  divisions: Division[];
+  /** A playoff bracket rather than a divisional regular season. */
+  playoffs: boolean;
   /** Whether any games have been recorded for this session yet. */
   hasGames: boolean;
 }
@@ -72,9 +135,13 @@ function sessionViews(data: LeagueData): SessionView[] {
       id: known.id,
       label: known.label,
       index: views.length + 1,
-      weeks: d ? d.weeks : known.weeks,
+      // A drafted-but-unplayed session has no weeks on record yet; fall back to
+      // the plan so the UI can say how long the session is meant to run.
+      weeks: d && d.weeks > 0 ? d.weeks : known.weeks,
       players: d ? d.playerIds : [],
-      hasGames: d !== undefined,
+      divisions: d ? d.divisions : [],
+      playoffs: known.playoffs === true,
+      hasGames: d !== undefined && d.weeks > 0,
     });
     seen.add(known.id);
   }
@@ -86,7 +153,9 @@ function sessionViews(data: LeagueData): SessionView[] {
       index: views.length + 1,
       weeks: d.weeks,
       players: d.playerIds,
-      hasGames: true,
+      divisions: d.divisions,
+      playoffs: false,
+      hasGames: d.weeks > 0,
     });
   }
   return views;
@@ -110,9 +179,70 @@ function resolveSession(data: LeagueData, requested: string | null): SessionId {
   return latest?.id ?? KNOWN_SESSIONS[0]!.id;
 }
 
-function stateFor(sessionId: SessionId): unknown {
+const PLAYOFF_SUFFIX = "-playoffs";
+
+/**
+ * The regular-season session a playoff bracket follows from, by naming
+ * convention (`spring-2026-playoffs` → `spring-2026`), or `null` for a session
+ * that is not a playoff. The convention is the only link between the two: it
+ * keeps the pairing out of the data files, at the cost of requiring the ids to
+ * match.
+ */
+function regularSeasonFor(sessionId: SessionId): SessionId | null {
+  return sessionId.endsWith(PLAYOFF_SUFFIX)
+    ? sessionId.slice(0, -PLAYOFF_SUFFIX.length)
+    : null;
+}
+
+/**
+ * Who has qualified for a playoff bracket: the top
+ * {@link PLAYOFF_QUALIFIERS_PER_DIVISION} of each division in the regular
+ * season, in division order. With two divisions that is a four-player bracket —
+ * the two semifinals cross the divisions (A1 vs B2, B1 vs A2) so the two
+ * division winners can only meet in the final.
+ *
+ * Seeds are read straight off the division standings, so they reflect the same
+ * win% / ball% ranking as the table the players have been watching all season.
+ *
+ * Returns an empty list for a session that is not a playoff, or whose regular
+ * season has no divisions, or whose regular season has not been played. That
+ * last guard matters: with no games recorded every player is 0-0, so the
+ * standings fall through to the name tiebreaker and the "bracket" would be four
+ * players in alphabetical order — a confidently wrong answer, which is worse
+ * than no answer.
+ */
+function playoffSeeds(
+  league: LeagueService,
+  views: readonly SessionView[],
+  sessionId: SessionId,
+): { seed: string; playerId: string; divisionId: string }[] {
+  const regularId = regularSeasonFor(sessionId);
+  if (regularId === null) return [];
+  const regular = views.find((v) => v.id === regularId);
+  if (!regular || regular.divisions.length === 0 || !regular.hasGames) return [];
+
+  const seeds: { seed: string; playerId: string; divisionId: string }[] = [];
+  for (const division of regular.divisions) {
+    const table = league.standings(regularId, {
+      playerIds: division.playerIds,
+    });
+    for (const row of table.slice(0, PLAYOFF_QUALIFIERS_PER_DIVISION)) {
+      seeds.push({
+        seed: `${division.id.toUpperCase()}${row.rank}`,
+        playerId: row.playerId,
+        divisionId: division.id,
+      });
+    }
+  }
+  return seeds;
+}
+
+function stateFor(sessionId: SessionId, divisionId: string | null): unknown {
   const data = store.load();
   const activeSessionId = resolveSession(data, sessionId);
+  const views = sessionViews(data);
+  const activeView = views.find((v) => v.id === activeSessionId);
+  const divisions = activeView?.divisions ?? [];
 
   // Two distinct rating clocks land in the standings:
   //   Live  — folded over every game to date. This is the number that moves and
@@ -130,26 +260,55 @@ function stateFor(sessionId: SessionId): unknown {
   const league = new LeagueService(data.players, current, data.matches, {
     handicapTable,
   });
-  // Always session-scoped: a session with no games yet shows the full roster at
-  // zero, which is the right "not started" view for an upcoming season.
-  const standings = league.standings(activeSessionId).map((s) => ({
-    ...s,
-    // `leagueRating`, `provisional`, `confidence`, `trend` are already the
-    // live values (the service was built from `current`). Attach the spot.
-    spotRating: spotRatingById.get(s.playerId) ?? s.leagueRating,
+  // `leagueRating`, `provisional`, `confidence`, `trend` are already the live
+  // values (the service was built from `current`). Attach the spot.
+  const withSpot = (rows: Standing[]) =>
+    rows.map((s) => ({
+      ...s,
+      spotRating: spotRatingById.get(s.playerId) ?? s.leagueRating,
+    }));
+
+  const seeds = playoffSeeds(league, views, activeSessionId);
+
+  // Always session-scoped, to everyone the session is *about*: whoever is on
+  // record (from the game log, or from a division draft written before week 1)
+  // plus, for a playoff, everyone who qualified. The union matters mid-bracket —
+  // on record alone would drop the semifinal that has not been played yet, and
+  // seeds alone would drop anyone who played without qualifying. A session with
+  // neither shows the full league, the right "not started" view for an
+  // undrafted season.
+  const roster = [
+    ...new Set([...(activeView?.players ?? []), ...seeds.map((q) => q.playerId)]),
+  ];
+  const scope = roster.length > 0 ? { playerIds: roster } : {};
+  const standings = withSpot(league.standings(activeSessionId, scope));
+  const divisionStandings = divisions.map((d) => ({
+    id: d.id,
+    label: d.label,
+    standings: withSpot(league.standings(activeSessionId, { playerIds: d.playerIds })),
   }));
+
+  // Echo the requested division only if it exists this session, so a stale
+  // selection in the UI falls back to the combined table instead of an empty one.
+  const activeDivisionId =
+    divisionId && divisions.some((d) => d.id === divisionId)
+      ? divisionId
+      : null;
 
   return {
     activeSessionId,
+    activeDivisionId,
+    divisionStandings,
+    playoffSeeds: seeds,
     raceToGames: RACE_TO_GAMES,
     players: data.players.map((p) => ({
       id: p.id,
       name: p.name,
       fargo: p.fargoRating,
     })),
-    sessions: sessionViews(data),
+    sessions: views,
     standings,
-    allTimeStandings: league.standings(),
+    allTimeStandings: withSpot(league.standings()),
   };
 }
 
@@ -177,6 +336,8 @@ function ballSpot(home: string, away: string): unknown {
 
 interface RecordMatchBody {
   sessionId?: string;
+  /** Division view to return in the response; purely presentational. */
+  division?: string;
   week?: number;
   home?: string;
   away?: string;
@@ -230,15 +391,14 @@ function recordMatch(body: RecordMatchBody): unknown {
       );
     }
     const loserTarget = winner === home ? spot.away : spot.home;
+    // Negatives are legal: in one pocket each foul costs a ball, so a loser
+    // can finish below zero. Only the winner reaches their target, so the
+    // loser must stay strictly below theirs.
     const loserBalls = Number(g.loserBalls ?? 0);
-    if (
-      !Number.isInteger(loserBalls) ||
-      loserBalls < 0 ||
-      loserBalls >= loserTarget
-    ) {
+    if (!Number.isInteger(loserBalls) || loserBalls >= loserTarget) {
       throw new HttpError(
         400,
-        `Game ${i + 1}: loser balls must be a whole number from 0 to ${loserTarget - 1}`,
+        `Game ${i + 1}: loser balls must be a whole number below ${loserTarget} (negatives allowed for fouls)`,
       );
     }
     if (winner === home) homeWins++;
@@ -261,7 +421,7 @@ function recordMatch(body: RecordMatchBody): unknown {
     away,
     games: cleaned,
   });
-  return { matchId, ...(stateFor(sessionId) as object) };
+  return { matchId, ...(stateFor(sessionId, body.division ?? null) as object) };
 }
 
 /**
@@ -300,7 +460,299 @@ function recordForfeit(body: RecordMatchBody): unknown {
     forfeit: true,
     forfeitWinner,
   });
-  return { matchId, ...(stateFor(sessionId) as object) };
+  return { matchId, ...(stateFor(sessionId, body.division ?? null) as object) };
+}
+
+/**
+ * Propose a division split for a session. Divisions are re-drafted every
+ * session, so this is the tool that makes that a one-click job: it returns a
+ * balanced serpentine draft (see `draftDivisions`) over the current roster,
+ * along with the exact divisions.csv rows to paste.
+ *
+ * It **writes nothing**. A division is a roster decision — availability, who
+ * wants to play whom, who asked to move — and none of that is in the data. So
+ * this proposes and the human commits, by pasting into divisions.csv.
+ *
+ * Players are rated by their spot rating, the same number that sets their ball
+ * spots: it holds at the Fargo seed until a player's first 10 games, so a
+ * brand-new league drafts on Fargo and a running one drafts on league results.
+ */
+function draftProposal(sessionId: SessionId, divisionCount: number): unknown {
+  if (!Number.isInteger(divisionCount) || divisionCount < 1) {
+    throw new HttpError(400, "divisions must be a positive integer");
+  }
+  const data = store.load();
+  if (data.players.length < divisionCount) {
+    throw new HttpError(
+      400,
+      `Cannot draft ${divisionCount} divisions from ${data.players.length} player(s)`,
+    );
+  }
+  const ratingById = new Map(
+    spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
+  );
+  const nameById = new Map(data.players.map((p) => [p.id, p.name]));
+
+  const divisions = draftDivisions(
+    data.players.map((p) => ({
+      playerId: p.id,
+      rating: ratingById.get(p.id) ?? p.fargoRating,
+    })),
+    divisionCount,
+  );
+
+  const rows = divisions.flatMap((d) =>
+    d.playerIds.map((id) => `${sessionId},${d.id},${id}`),
+  );
+
+  return {
+    sessionId,
+    divisionCount,
+    divisions: divisions.map((d) => {
+      const ratings = d.playerIds.map((id) => ratingById.get(id) ?? 0);
+      const total = ratings.reduce((sum, r) => sum + r, 0);
+      return {
+        id: d.id,
+        label: d.label,
+        average: d.playerIds.length > 0 ? total / d.playerIds.length : 0,
+        players: d.playerIds.map((id) => ({
+          id,
+          name: nameById.get(id) ?? id,
+          rating: ratingById.get(id) ?? 0,
+        })),
+      };
+    }),
+    /**
+     * Paste-ready divisions.csv body (no header), newline-terminated. The
+     * trailing newline matters: these rows are meant to be appended to an
+     * existing divisions.csv, and without it a second append would run the
+     * last row of this batch into the first row of the next.
+     */
+    csv: rows.length > 0 ? rows.join("\n") + "\n" : "",
+  };
+}
+
+/**
+ * The schedule for a session, division by division, as the UI and a printout
+ * need it: weeks in order, each fixture annotated with whether it has been
+ * played and what the ball spot would be.
+ *
+ * Two honest caveats are baked into the response rather than left implicit:
+ *
+ *   - `spot` is **as of right now**, not a promise. Spot ratings re-base every
+ *     10 games a player finishes (see `spotRatingsFor`), so the spot shown on a
+ *     week-9 fixture will very likely move before it is played. `spotSettled`
+ *     marks the fixtures that are actually safe to print.
+ *   - `played` is matched on session, week and the unordered pair, so seats can
+ *     be swapped on the night without breaking the link. A fixture played in a
+ *     different week reads as unplayed, which is the truthful answer: the
+ *     schedule says one thing and the game log says another.
+ */
+function scheduleFor(sessionId: SessionId, divisionId: string | null): unknown {
+  const data = store.load();
+  const views = sessionViews(data);
+  const view = views.find((v) => v.id === sessionId);
+  const nameById = new Map(data.players.map((p) => [p.id, p.name]));
+
+  const ratings = spotRatings(data);
+  const ratingById = new Map(ratings.map((r) => [r.playerId, r.leagueRating]));
+  // Games each player still owes before their spot re-bases. A fixture's spot
+  // is only settled if neither player can cross a boundary before playing it.
+  const owed = new Map(
+    ratings.map((r) => [
+      r.playerId,
+      SPOT_REFRESH_GAMES - (r.gamesPlayed % SPOT_REFRESH_GAMES),
+    ]),
+  );
+
+  // Which (week, unordered pair) combinations already have a result.
+  const pairKey = (week: number, a: string, b: string) =>
+    week + "|" + [a, b].sort().join("|");
+  const playedKeys = new Set(
+    data.matches
+      .filter((m) => m.sessionId === sessionId)
+      .map((m) => pairKey(m.week, m.home, m.away)),
+  );
+
+  const fixtures = data.schedule.filter((f) => f.sessionId === sessionId);
+
+  // Group by division so each division's byes come from its own roster. An
+  // undivided session is one unnamed group over the whole session roster.
+  const groups: { id: string | null; label: string; roster: string[] }[] =
+    view && view.divisions.length > 0
+      ? view.divisions.map((d) => ({
+          id: d.id,
+          label: d.label,
+          roster: d.playerIds,
+        }))
+      : [{ id: null, label: "All players", roster: view?.players ?? [] }];
+
+  const selected = divisionId
+    ? groups.filter((g) => g.id === divisionId)
+    : groups;
+
+  const divisions = selected.map((group) => {
+    const inGroup = new Set(group.roster);
+    const own =
+      group.id === null
+        ? fixtures
+        : fixtures.filter((f) => inGroup.has(f.home) && inGroup.has(f.away));
+
+    const weeks = fixturesToWeeks(own, group.roster).map((week) => ({
+      week: week.week,
+      byes: week.byes.map((id) => ({ id, name: nameById.get(id) ?? id })),
+      matches: week.matches.map((m) => {
+        const hr = ratingById.get(m.home);
+        const ar = ratingById.get(m.away);
+        const spot =
+          hr === undefined || ar === undefined
+            ? null
+            : ballSpotForRatings(handicapTable, hr, ar);
+        // Only week 1 can be printed with confidence: any later week sits
+        // behind games that may re-base either player's spot first.
+        const settled =
+          week.week === 1 &&
+          (owed.get(m.home) ?? 0) > 0 &&
+          (owed.get(m.away) ?? 0) > 0;
+        return {
+          home: m.home,
+          homeName: nameById.get(m.home) ?? m.home,
+          away: m.away,
+          awayName: nameById.get(m.away) ?? m.away,
+          spot,
+          formatted: spot ? formatBallSpot(spot) : null,
+          spotSettled: settled,
+          played: playedKeys.has(pairKey(week.week, m.home, m.away)),
+        };
+      }),
+    }));
+
+    const all = weeks.flatMap((w) => w.matches);
+    return {
+      id: group.id,
+      label: group.label,
+      weeks,
+      fixtureCount: own.length,
+      playedCount: all.filter((m) => m.played).length,
+    };
+  });
+
+  // Fixtures belonging to no division — a hand edit pairing across divisions.
+  // Surfaced rather than dropped, so an accident is visible instead of
+  // silently vanishing from every table.
+  const grouped = new Set(
+    divisions.flatMap((d) =>
+      d.weeks.flatMap((w) =>
+        w.matches.map((m) => w.week + "|" + m.home + "|" + m.away),
+      ),
+    ),
+  );
+  const ungrouped = fixtures
+    .filter((f) => !grouped.has(f.week + "|" + f.home + "|" + f.away))
+    .map((f) => ({
+      week: f.week,
+      home: f.home,
+      homeName: nameById.get(f.home) ?? f.home,
+      away: f.away,
+      awayName: nameById.get(f.away) ?? f.away,
+    }));
+
+  return {
+    sessionId,
+    label: view?.label ?? sessionId,
+    plannedWeeks: view?.weeks ?? 0,
+    divisions,
+    ungrouped,
+    total: fixtures.length,
+  };
+}
+
+interface GenerateScheduleBody {
+  sessionId?: string;
+  /** Weeks to generate. Defaults to the session's planned length. */
+  weeks?: number;
+  /** Required to overwrite a session that already has fixtures. */
+  replace?: boolean;
+}
+
+/**
+ * Generate a session's fixtures and write them to schedule.csv — one
+ * round-robin per division, every division running the same weeks in parallel.
+ *
+ * It **refuses to overwrite** an existing schedule unless `replace` is set, and
+ * that guard is the whole reason the schedule is worth persisting: once the file
+ * exists it has probably been hand-edited, and regenerating silently would throw
+ * those edits away. Generate once, then edit the file — or skip this entirely
+ * and write the file yourself.
+ *
+ * The rotation offset is the session's index, so the byes and rematches a
+ * partial cycle hands to some players land on *different* players next session
+ * (see `buildSchedule`).
+ */
+function generateSchedule(body: GenerateScheduleBody): unknown {
+  const { sessionId } = body;
+  if (!sessionId) {
+    throw new HttpError(400, "sessionId is required");
+  }
+  const data = store.load();
+  const views = sessionViews(data);
+  const view = views.find((v) => v.id === sessionId);
+  if (!view) {
+    throw new HttpError(400, 'Unknown session "' + sessionId + '"');
+  }
+
+  const existing = data.schedule.filter((f) => f.sessionId === sessionId);
+  if (existing.length > 0 && body.replace !== true) {
+    throw new HttpError(
+      409,
+      'Session "' +
+        sessionId +
+        '" already has ' +
+        existing.length +
+        " scheduled fixture(s). Pass replace: true to discard them and " +
+        "regenerate — any hand edits in schedule.csv for this session " +
+        "will be lost.",
+    );
+  }
+
+  const weeks = body.weeks ?? view.weeks;
+  if (!Number.isInteger(weeks) || weeks < 1) {
+    throw new HttpError(400, "weeks must be a positive integer");
+  }
+
+  // One round-robin per division; an undivided session schedules its whole
+  // roster as a single group.
+  const groups =
+    view.divisions.length > 0
+      ? view.divisions.map((d) => d.playerIds)
+      : [view.players];
+
+  const fixtures: Fixture[] = [];
+  for (const roster of groups) {
+    if (roster.length < 2) {
+      throw new HttpError(
+        400,
+        "Cannot schedule a group of " +
+          roster.length +
+          ' player(s) in "' +
+          sessionId +
+          '" — draft the divisions first (see /api/draft).',
+      );
+    }
+    fixtures.push(
+      ...fixturesFor(
+        sessionId,
+        buildSchedule(roster, weeks, { rotation: view.index }),
+      ),
+    );
+  }
+
+  const written = store.replaceSchedule(sessionId, fixtures);
+  return {
+    written,
+    replaced: existing.length,
+    ...(scheduleFor(sessionId, null) as object),
+  };
 }
 
 // --- HTTP plumbing ---------------------------------------------------------
@@ -348,7 +800,43 @@ const server = createServer(async (req, res) => {
       sendJson(
         res,
         200,
-        stateFor(resolveSession(store.load(), url.searchParams.get("session"))),
+        stateFor(
+          resolveSession(store.load(), url.searchParams.get("session")),
+          url.searchParams.get("division"),
+        ),
+      );
+      return;
+    }
+
+    if (req.method === "GET" && path === "/api/schedule") {
+      sendJson(
+        res,
+        200,
+        scheduleFor(
+          resolveSession(store.load(), url.searchParams.get("session")),
+          url.searchParams.get("division"),
+        ),
+      );
+      return;
+    }
+
+    if (req.method === "POST" && path === "/api/schedule") {
+      const body = JSON.parse(
+        (await readBody(req)) || "{}",
+      ) as GenerateScheduleBody;
+      sendJson(res, 201, generateSchedule(body));
+      return;
+    }
+
+    if (req.method === "GET" && path === "/api/draft") {
+      const requested = url.searchParams.get("divisions");
+      sendJson(
+        res,
+        200,
+        draftProposal(
+          resolveSession(store.load(), url.searchParams.get("session")),
+          requested === null ? 2 : Number(requested),
+        ),
       );
       return;
     }
