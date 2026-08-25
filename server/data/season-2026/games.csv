@@ -1,1 +1,9 @@
-session,matchId,week,home,away,winner,loserBalls
+session,matchId,week,home,away,winner,loserBalls,forfeit
+fall-2026,fall-2026-w1-1,1,zach,sharlee,zach,5,0
+fall-2026,fall-2026-w1-1,1,zach,sharlee,sharlee,2,0
+fall-2026,fall-2026-w1-1,1,zach,sharlee,zach,-2,0
+fall-2026,fall-2026-w1-1,1,zach,sharlee,zach,4,0
+fall-2026,fall-2026-w1-2,1,jay,paul,jay,-1,0
+fall-2026,fall-2026-w1-2,1,jay,paul,jay,1,0
+fall-2026,fall-2026-w1-2,1,jay,paul,paul,4,0
+fall-2026,fall-2026-w1-2,1,jay,paul,jay,2,0
