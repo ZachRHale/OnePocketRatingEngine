@@ -79,14 +79,50 @@ npm run serve     # http://localhost:8080  (no extra dependencies)
   `test/scenarios/data/season-2026`; override with `LEAGUE_DATA_DIR`. Port via
   `PORT`.
 - **What it does:** shows per-session standings and each player's session-frozen
-  rating, looks up tonight's ball spot for any pairing, and records a match
-  (appends game rows, then recomputes everything from history).
+  rating, looks up tonight's ball spot for any pairing, records a match (appends
+  game rows, then recomputes everything from history), and renders the weekly
+  email at `/report`.
 - Ball spots always use ratings **frozen at the start of the active session**,
   per the league policy — recording more matches within a session never shifts
   that session's spots.
 
 The store is also what the test scenarios load through, so fixtures exercise the
 real persistence path rather than a parallel loader.
+
+## The weekly email
+
+The bulletin that goes out between match nights — last week's results, this
+week's schedule, the makeups still owed, and each division's standings:
+
+```bash
+npm run report                          # HTML on stdout
+npm run report -- --format text         # plain text
+npm run report -- --week 4 -o week4.html
+```
+
+Or open **http://localhost:8080/report** while the app is running (there is a
+"Weekly email" link in the header), then select all and paste straight into the
+mail client — the HTML styles are inlined so they survive the paste.
+
+With no arguments it reports on the latest session on record and infers the
+week: the week being played now, so "last week" is the week just finished. Pass
+`--week` whenever that guess is wrong.
+
+Two things worth knowing about what it can and cannot see:
+
+- **Results carry the week they were *scheduled* for, and the log has no dates.**
+  A week-1 makeup played during week 2 is still a week-1 match. Rather than drop
+  it, the report lists it under "Makeups & late entries" — earlier-week results
+  that were entered after play moved on, spotted purely from the order rows were
+  appended.
+- **Ball spots on upcoming fixtures are current, not promised.** A player's spot
+  re-bases every `SPOT_REFRESH_GAMES` games they finish, so a spot printed for a
+  later week can move before it is played.
+
+The split follows the same rule as everything else here: what goes in the
+bulletin is league logic (`buildWeeklyReport`, Layer 3), and how it looks is not
+(`server/report.ts`). A second renderer — Markdown, a PDF, a Slack post — is a
+new function over the same model.
 
 ## The current rating engine
 

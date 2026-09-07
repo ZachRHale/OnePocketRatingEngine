@@ -36,3 +36,14 @@ export { matchesInSession } from "./sessions.js";
 export { draftDivisions } from "./divisions.js";
 export type { DraftEntry, DraftDivisionsOptions } from "./divisions.js";
 export { spotRatingsFor, SPOT_REFRESH_GAMES } from "./spotRatings.js";
+export { buildWeeklyReport, currentWeekFor } from "./weeklyReport.js";
+export type {
+  WeeklyReport,
+  WeeklyReportInput,
+  WeeklyReportOptions,
+  DivisionReport,
+  ReportResult,
+  ReportFixture,
+  ReportGame,
+  ReportPlayer,
+} from "./weeklyReport.js";

@@ -58,6 +58,13 @@
         color: var(--muted);
         font-size: 13px;
       }
+      header .sub a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      header .sub a:hover {
+        text-decoration: underline;
+      }
       main {
         display: grid;
         grid-template-columns: 1fr;
@@ -279,6 +286,10 @@
           <select id="division"></select>
         </span>
         <span id="sessionMeta"></span>
+        <!-- The weekly email, rendered and ready to select-all and paste. -->
+        <a id="reportLink" href="/report" target="_blank" rel="noopener"
+          >Weekly email ↗</a
+        >
       </div>
     </header>
 
@@ -555,6 +566,8 @@
         const s = views.find((x) => x.id === state.activeSessionId);
         const divisionCount = (state.divisionStandings || []).length;
         const split = divisionCount ? ` · ${divisionCount} divisions` : "";
+        $("reportLink").href =
+          "/report?session=" + encodeURIComponent(state.activeSessionId);
         $("sessionMeta").textContent = s
           ? s.hasGames
             ? `· ${s.players.length} players${split} · ${s.weeks} week(s) played`
