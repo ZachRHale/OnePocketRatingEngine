@@ -27,8 +27,8 @@ import {
   type LeagueRepository,
   type ReportFixture,
   type ReportResult,
+  type ReportStanding,
   type SessionId,
-  type Standing,
   type WeeklyReport,
 } from "../src/index.js";
 import { resolveSession, sessionViews } from "./sessions.js";
@@ -229,12 +229,28 @@ function fixturesTableHtml(
   return `<table style="${TABLE}" cellpadding="0" cellspacing="0">${head}${rows}</table>`;
 }
 
-function standingsTableHtml(rows: readonly Standing[]): string {
+/**
+ * The spot rating, rounded for display — the rating the league plays to, not
+ * the live one. An em dash when a player has none yet. A provisional rating is
+ * flagged with an asterisk; the table's footnote explains it.
+ */
+function spotRating(s: ReportStanding): string {
+  const value = s.spotRating === null ? "—" : String(Math.round(s.spotRating));
+  return s.provisional ? `${value}*` : value;
+}
+
+/** True when anyone in the table is still provisional — gates the footnote. */
+function anyProvisional(report: WeeklyReport): boolean {
+  return report.divisions.some((d) => d.standings.some((s) => s.provisional));
+}
+
+function standingsTableHtml(rows: readonly ReportStanding[]): string {
   const head =
     `<tr><th style="${TH}">#</th><th style="${TH}">Player</th>` +
     `<th style="${TH_NUM}">W</th><th style="${TH_NUM}">L</th>` +
     `<th style="${TH_NUM}">Win%</th>` +
-    `<th style="${TH_NUM}">Ball%</th></tr>`;
+    `<th style="${TH_NUM}">Ball%</th>` +
+    `<th style="${TH_NUM}">Spot</th></tr>`;
   const body = rows
     .map(
       (s) =>
@@ -243,7 +259,8 @@ function standingsTableHtml(rows: readonly Standing[]): string {
         `<td style="${TD_NUM}">${s.gamesWon}</td>` +
         `<td style="${TD_NUM}">${s.gamesLost}</td>` +
         `<td style="${TD_NUM}">${pct(s.winPct)}</td>` +
-        `<td style="${TD_NUM}color:${MUTED}">${pct(s.ballPct)}</td></tr>`,
+        `<td style="${TD_NUM}color:${MUTED}">${pct(s.ballPct)}</td>` +
+        `<td style="${TD_NUM}color:${MUTED}">${spotRating(s)}</td></tr>`,
     )
     .join("");
   return `<table style="${TABLE}" cellpadding="0" cellspacing="0">${head}${body}</table>`;
@@ -349,8 +366,16 @@ export function renderReportHtml(report: WeeklyReport): string {
   parts.push(
     `<p style="${NOTE}">Standings are games won and lost within ` +
       `${escapeHtml(report.sessionLabel)}. Ties on Win% are broken by Ball% — ` +
-      `the share of the balls you needed that you actually pocketed.</p>`,
+      `the share of the balls you needed that you actually pocketed. Spot is ` +
+      `the rating your ball spots are set from; it re-bases once you finish ` +
+      `another block of games, not after every game.</p>`,
   );
+  if (anyProvisional(report)) {
+    parts.push(
+      `<p style="${NOTE}">* Provisional — still early in the games it takes ` +
+        `for a rating to settle, so this spot can move more than most.</p>`,
+    );
+  }
 
   const body = parts.join("\n");
   return `<!doctype html>
@@ -400,17 +425,18 @@ function textFixtures(
   });
 }
 
-function textStandings(rows: readonly Standing[]): string[] {
+function textStandings(rows: readonly ReportStanding[]): string[] {
   const width = Math.max(6, ...rows.map((s) => s.name.length));
   const header =
-    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}   W   L   Win%  Ball%`;
+    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}   W   L   Win%  Ball%    Spot`;
   return [
     header,
     ...rows.map(
       (s) =>
         `  ${String(s.rank).padStart(2)}  ${s.name.padEnd(width)}` +
         `  ${String(s.gamesWon).padStart(2)}  ${String(s.gamesLost).padStart(2)}` +
-        `  ${pct(s.winPct).padStart(5)}  ${pct(s.ballPct).padStart(5)}`,
+        `  ${pct(s.winPct).padStart(5)}  ${pct(s.ballPct).padStart(5)}` +
+        `  ${spotRating(s).padStart(6)}`,
     ),
   ];
 }
@@ -485,8 +511,17 @@ export function renderReportText(report: WeeklyReport): string {
   }
   out.push(
     `Standings cover ${report.sessionLabel} only. Ties on Win% break on Ball% —`,
-    "the share of the balls you needed that you actually pocketed.",
+    "the share of the balls you needed that you actually pocketed. Spot is the",
+    "rating your ball spots come from; it re-bases once you finish another block",
+    "of games, not after every game.",
   );
+  if (anyProvisional(report)) {
+    out.push(
+      "",
+      "* Provisional — still early in the games it takes for a rating to settle,",
+      "  so this spot can move more than most.",
+    );
+  }
 
   return out.join("\n") + "\n";
 }

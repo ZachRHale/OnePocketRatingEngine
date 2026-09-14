@@ -109,7 +109,20 @@ export interface DivisionReport {
   /** Fixtures from earlier weeks with no result yet — the makeups owed. */
   makeups: ReportFixture[];
   /** This group's standings for the session. Empty for the catch-all group. */
-  standings: Standing[];
+  standings: ReportStanding[];
+}
+
+/**
+ * A standings row with the rating that actually sets ball spots attached.
+ *
+ * `leagueRating` (inherited from {@link Standing}) is the LIVE rating — it
+ * moves after every game. `spotRating` is the one the league plays to: it
+ * re-bases only when a player finishes another block of games, so it holds
+ * steady in between. It is `null` when no spot ratings were supplied, which is
+ * better than printing the live rating and calling it a spot.
+ */
+export interface ReportStanding extends Standing {
+  spotRating: number | null;
 }
 
 /** Everything one week's email needs. */
@@ -317,7 +330,12 @@ export function buildWeeklyReport(
         .map(toFixture),
       standings: group.catchAll
         ? []
-        : league.standings(sessionId, { playerIds: group.playerIds }),
+        : league
+            .standings(sessionId, { playerIds: group.playerIds })
+            .map((s) => ({
+              ...s,
+              spotRating: spotRatingById.get(s.playerId) ?? null,
+            })),
     };
   });
 

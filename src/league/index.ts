@@ -46,4 +46,5 @@ export type {
   ReportFixture,
   ReportGame,
   ReportPlayer,
+  ReportStanding,
 } from "./weeklyReport.js";
