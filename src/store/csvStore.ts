@@ -1,6 +1,7 @@
 import {
   RACE_TO_GAMES,
   seedPlayer,
+  type BallSpot,
   type Game,
   type Match,
   type MatchId,
@@ -71,6 +72,13 @@ export interface NewMatch {
   forfeit?: boolean;
   /** Required when {@link forfeit}: the player awarded the win (must be home or away). */
   forfeitWinner?: PlayerId;
+  /**
+   * A spot the players agreed to instead of the rating-derived one, oriented to
+   * this match's home/away. Stored with the games so the log records the spot
+   * they were actually played under; omit it to let the ratings set the spot.
+   * Not allowed on a {@link forfeit}, which has no games to spot.
+   */
+  agreedSpot?: BallSpot;
   /** Optional explicit id; the store generates a unique one when omitted. */
   matchId?: MatchId;
 }
@@ -114,8 +122,20 @@ const GAMES_FILE = "games.csv";
 const DIVISIONS_FILE = "divisions.csv";
 const SCHEDULE_FILE = "schedule.csv";
 const PLAYERS_HEADER = "id,fargo,name";
-const GAMES_HEADER = "session,matchId,week,home,away,winner,loserBalls,forfeit";
+const GAMES_HEADER =
+  "session,matchId,week,home,away,winner,loserBalls,forfeit,spotHome,spotAway";
+/**
+ * Trailing games.csv columns added after the log format was first written, in
+ * header order, with the value that upgrades an existing row.
+ */
+const GAMES_OPTIONAL_COLUMNS: readonly [column: string, fill: string][] = [
+  ["forfeit", "0"],
+  ["spotHome", ""],
+  ["spotAway", ""],
+];
 const SCHEDULE_HEADER = "session,week,home,away";
+/** schedule.csv header when any fixture carries an agreed spot. */
+const SCHEDULE_HEADER_WITH_SPOT = "session,week,home,away,spotHome,spotAway";
 
 /** Fixed, deterministic date: dates are not persisted and the engine ignores them. */
 const MATCH_DATE = new Date("2026-01-01T00:00:00Z");
@@ -131,18 +151,29 @@ export interface CsvLeagueStoreOptions {
  * A CSV-backed {@link LeagueRepository}. Reads a directory holding these files:
  *
  *   players.csv    →  id, fargo, name
- *   games.csv      →  session, matchId, week, home, away, winner, loserBalls, forfeit
+ *   games.csv      →  session, matchId, week, home, away, winner, loserBalls,
+ *                     forfeit, spotHome, spotAway
  *                     (one row per game; `week` is 1-based WITHIN the session)
  *   divisions.csv  →  session, division, player[, label]   (OPTIONAL file)
  *                     (one row per player per session; absent = undivided)
- *   schedule.csv   →  session, week, home, away              (OPTIONAL file)
- *                     (one row per planned fixture; absent = nothing scheduled)
+ *   schedule.csv   →  session, week, home, away[, spotHome, spotAway]
+ *                     (OPTIONAL file; one row per planned fixture)
  *
- * The trailing `forfeit` column is optional and backward-compatible: a legacy
- * file without it reads as all-played (no forfeits), and the first append
- * upgrades the file in place, backfilling `0` on existing rows. A forfeit is a
- * single row with `forfeit=1`, `winner` set to the player awarded the win, and
- * no games — it counts in the standings but is ignored by ratings and spots.
+ * The trailing `forfeit`, `spotHome` and `spotAway` columns are optional and
+ * backward-compatible: a legacy file without them reads as all-played with
+ * rating-derived spots, and the first append upgrades the file in place,
+ * backfilling `0` / blank on existing rows. A forfeit is a single row with
+ * `forfeit=1`, `winner` set to the player awarded the win, and no games — it
+ * counts in the standings but is ignored by ratings and spots.
+ *
+ * **Agreed spots.** `spotHome`/`spotAway` are blank on a normal match. Filled
+ * in (both, on every row of the match), they are a spot the players agreed to
+ * instead of the ratings' — e.g. "play this one even" for an underrated player
+ * — and that spot is used for the match as-is. It is a recorded fact, like the
+ * ball counts, so the rating engine reads the games against the spot they were
+ * really played under. The same two columns on schedule.csv announce an agreed
+ * spot ahead of time, so the schedule and the weekly email can show it; the
+ * schedule is a plan and never sets a result's spot by itself.
  *
  * divisions.csv is optional and purely declarative — it names the player groups
  * within a session and nothing else. It is read, never written: a division is a
@@ -217,9 +248,19 @@ export class CsvLeagueStore implements LeagueRepository {
     const matchId =
       match.matchId ?? this.nextMatchId(match.sessionId, match.week);
 
-    // Older logs predate the `forfeit` column; upgrade in place before writing
+    if (match.agreedSpot) {
+      if (match.forfeit) {
+        throw new Error("A forfeit has no games, so it cannot carry a spot");
+      }
+      validateSpot(match.agreedSpot, `agreed spot for ${match.home} vs ${match.away}`);
+    }
+    const spotCells = match.agreedSpot
+      ? [match.agreedSpot.home, match.agreedSpot.away]
+      : ["", ""];
+
+    // Older logs predate the trailing columns; upgrade in place before writing
     // so every row in the file has the same shape.
-    this.ensureGamesForfeitColumn();
+    this.ensureGamesColumns();
 
     let rows: string[];
     if (match.forfeit) {
@@ -241,6 +282,7 @@ export class CsvLeagueStore implements LeagueRepository {
           winner,
           0,
           1,
+          ...spotCells,
         ].join(","),
       ];
     } else {
@@ -270,6 +312,7 @@ export class CsvLeagueStore implements LeagueRepository {
           g.winner,
           g.loserBalls,
           0,
+          ...spotCells,
         ].join(","),
       );
     }
@@ -312,12 +355,21 @@ export class CsvLeagueStore implements LeagueRepository {
     const kept = this.loadFixtures(known).filter(
       (f) => f.sessionId !== sessionId,
     );
-    const rows = [...kept, ...fixtures].map((f) =>
-      [f.sessionId, f.week, f.home, f.away].join(","),
-    );
+    const all = [...kept, ...fixtures];
+    // The spot columns appear only once some fixture needs them, so a file
+    // with no agreed spots keeps its original four-column shape.
+    const withSpot = all.some((f) => f.agreedSpot);
+    const rows = all.map((f) => {
+      const cells: (string | number)[] = [f.sessionId, f.week, f.home, f.away];
+      if (withSpot) {
+        cells.push(f.agreedSpot?.home ?? "", f.agreedSpot?.away ?? "");
+      }
+      return cells.join(",");
+    });
+    const header = withSpot ? SCHEDULE_HEADER_WITH_SPOT : SCHEDULE_HEADER;
     writeFileSync(
       this.path(SCHEDULE_FILE),
-      `${SCHEDULE_HEADER}\n${rows.length > 0 ? rows.join("\n") + "\n" : ""}`,
+      `${header}\n${rows.length > 0 ? rows.join("\n") + "\n" : ""}`,
       "utf8",
     );
     return fixtures.length;
@@ -383,6 +435,7 @@ export class CsvLeagueStore implements LeagueRepository {
       const winner = row.winner!;
       // `forfeit` is optional (legacy files omit it); "1"/"true" mean forfeit.
       const forfeit = row.forfeit === "1" || row.forfeit === "true";
+      const agreedSpot = parseSpotCells(row, `match "${id}" in ${GAMES_FILE}`);
 
       requirePlayer(home, `match ${id} home`);
       requirePlayer(away, `match ${id} away`);
@@ -398,6 +451,7 @@ export class CsvLeagueStore implements LeagueRepository {
       let draft = byId.get(id);
       if (!draft) {
         draft = { id, sessionId, week, home, away, games: [] };
+        if (agreedSpot) draft.agreedSpot = agreedSpot;
         byId.set(id, draft);
         order.push(id);
       } else if (
@@ -408,6 +462,20 @@ export class CsvLeagueStore implements LeagueRepository {
       ) {
         throw new Error(
           `Match "${id}" has inconsistent session/home/away/week across its rows`,
+        );
+      } else if (
+        draft.agreedSpot?.home !== agreedSpot?.home ||
+        draft.agreedSpot?.away !== agreedSpot?.away
+      ) {
+        // One spot per match: every game is played under the same one.
+        throw new Error(
+          `Match "${id}" has different spotHome/spotAway across its rows`,
+        );
+      }
+
+      if (forfeit && agreedSpot) {
+        throw new Error(
+          `Forfeit match "${id}" has no games, so it cannot carry a spot`,
         );
       }
 
@@ -545,6 +613,12 @@ export class CsvLeagueStore implements LeagueRepository {
         home: row.home!,
         away: row.away!,
       };
+      const agreedSpot = parseSpotCells(
+        row,
+        `${SCHEDULE_FILE} (session ${sessionId}, week ${fixture.week}, ` +
+          `${fixture.home} vs ${fixture.away})`,
+      );
+      if (agreedSpot) fixture.agreedSpot = agreedSpot;
       let bySession = seen.get(sessionId);
       if (!bySession) {
         bySession = new Map();
@@ -574,6 +648,12 @@ export class CsvLeagueStore implements LeagueRepository {
     );
     const matches: Match[] = [];
     for (const d of ordered) {
+      // An agreed spot is a recorded fact and stands as written; only the
+      // rest are derived from the spot ratings in effect before the match.
+      if (d.agreedSpot) {
+        matches.push(buildMatch(d, d.agreedSpot));
+        continue;
+      }
       const spot = spotRatingsFor(this.engine, players, matches);
       const ratingById = new Map(spot.map((r) => [r.playerId, r.leagueRating]));
       const ballSpot = ballSpotForRatings(
@@ -596,13 +676,15 @@ export class CsvLeagueStore implements LeagueRepository {
   }
 
   /**
-   * Upgrade a legacy games.csv (written before the `forfeit` column existed) to
-   * the current shape, in place: append `,forfeit` to the header and `,0` to
-   * every data row. No-op when the file is absent (a fresh append writes the new
-   * header) or already has the column. Keeps every row in the file the same
-   * width so {@link parseCsv} stays happy after we append 8-column rows.
+   * Upgrade a legacy games.csv (written before some of the trailing
+   * {@link GAMES_OPTIONAL_COLUMNS} existed) to the current shape, in place:
+   * append each missing column to the header and its fill value (`0` for
+   * `forfeit`, blank for the spot columns) to every data row. No-op when the
+   * file is absent (a fresh append writes the new header) or already current.
+   * Keeps every row in the file the same width so {@link parseCsv} stays happy
+   * after we append full-width rows.
    */
-  private ensureGamesForfeitColumn(): void {
+  private ensureGamesColumns(): void {
     const path = this.path(GAMES_FILE);
     if (!existsSync(path)) {
       return;
@@ -613,13 +695,16 @@ export class CsvLeagueStore implements LeagueRepository {
       return; // effectively empty; the append will (re)write the header
     }
     const header = lines[headerIdx]!.split(",").map((h) => h.trim());
-    if (header.includes("forfeit")) {
+    const missing = GAMES_OPTIONAL_COLUMNS.filter(([c]) => !header.includes(c));
+    if (missing.length === 0) {
       return; // already current
     }
+    const headerCells = missing.map(([c]) => `,${c}`).join("");
+    const rowCells = missing.map(([, fill]) => `,${fill}`).join("");
     const upgraded = lines.map((line, i) => {
-      if (i === headerIdx) return `${line},forfeit`;
+      if (i === headerIdx) return `${line}${headerCells}`;
       if (i < headerIdx || line.trim().length === 0) return line; // blanks untouched
-      return `${line},0`;
+      return `${line}${rowCells}`;
     });
     writeFileSync(path, upgraded.join("\n"), "utf8");
   }
@@ -647,6 +732,43 @@ interface MatchDraft {
   /** A forfeit draft: awarded to {@link forfeitWinner}, with no games. */
   forfeit?: boolean;
   forfeitWinner?: string;
+  /** A spot recorded with the games, used instead of the rating-derived one. */
+  agreedSpot?: BallSpot;
+}
+
+/**
+ * Reads the optional `spotHome`/`spotAway` cells of a row: `undefined` when
+ * both are blank or the columns are absent, a validated spot when both are set.
+ * Exactly one set is a half-typed edit and is rejected rather than guessed at.
+ */
+function parseSpotCells(
+  row: Record<string, string>,
+  where: string,
+): BallSpot | undefined {
+  const h = row.spotHome ?? "";
+  const a = row.spotAway ?? "";
+  if (h === "" && a === "") return undefined;
+  if (h === "" || a === "") {
+    throw new Error(`Set both spotHome and spotAway, or neither, in ${where}`);
+  }
+  const spot = {
+    home: parseNumber(h, `spotHome in ${where}`),
+    away: parseNumber(a, `spotAway in ${where}`),
+  };
+  validateSpot(spot, where);
+  return spot;
+}
+
+/** A spot is a positive whole-ball target for each side. */
+function validateSpot(spot: BallSpot, where: string): void {
+  for (const n of [spot.home, spot.away]) {
+    if (!Number.isInteger(n) || n < 1) {
+      throw new Error(
+        `A ball spot must be whole numbers of at least 1 (${where}), ` +
+          `got ${spot.home}-${spot.away}`,
+      );
+    }
+  }
 }
 
 /**
@@ -672,6 +794,9 @@ function validateFixture(
   }
   if (home === away) {
     throw new Error(`A player cannot play themselves ("${home}") in ${where}`);
+  }
+  if (fixture.agreedSpot) {
+    validateSpot(fixture.agreedSpot, where);
   }
 
   let booked = bookedByWeek.get(week);
@@ -784,6 +909,7 @@ function buildMatch(
     home: draft.home,
     away: draft.away,
     ballSpot,
+    ...(draft.agreedSpot ? { spotAgreed: true } : {}),
     winner: homeWins > awayWins ? draft.home : draft.away,
     score: { home: homeWins, away: awayWins },
     raceToGames: RACE_TO_GAMES,

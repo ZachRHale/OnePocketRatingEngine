@@ -1,4 +1,4 @@
-import type { PlayerId, SessionId } from "../domain/index.js";
+import type { BallSpot, PlayerId, SessionId } from "../domain/index.js";
 
 /**
  * Layer 3 — League Logic.
@@ -141,6 +141,12 @@ export interface Fixture {
   week: number;
   home: PlayerId;
   away: PlayerId;
+  /**
+   * A ball spot the league has agreed for this fixture in advance, oriented to
+   * this fixture's home/away, overriding the rating-derived one. Absent when the
+   * spot is left to the ratings (the normal case).
+   */
+  agreedSpot?: BallSpot;
 }
 
 /**
@@ -218,4 +224,33 @@ export function fixturesFor(
       away: m.away,
     })),
   );
+}
+
+/**
+ * The agreed spot for a pairing in a given session and week, oriented to the
+ * `home`/`away` seats asked about, or `undefined` when the matching fixture has
+ * none (or there is no such fixture).
+ *
+ * The fixture is matched on the unordered pair, the same rule that links
+ * fixtures to results, so swapping seats on the night still finds it — and the
+ * spot is flipped to follow the players, not the seats.
+ */
+export function agreedSpotFor(
+  fixtures: readonly Fixture[],
+  sessionId: SessionId,
+  week: number,
+  home: PlayerId,
+  away: PlayerId,
+): BallSpot | undefined {
+  const f = fixtures.find(
+    (x) =>
+      x.sessionId === sessionId &&
+      x.week === week &&
+      ((x.home === home && x.away === away) ||
+        (x.home === away && x.away === home)),
+  );
+  if (!f?.agreedSpot) return undefined;
+  return f.home === home
+    ? { ...f.agreedSpot }
+    : { home: f.agreedSpot.away, away: f.agreedSpot.home };
 }

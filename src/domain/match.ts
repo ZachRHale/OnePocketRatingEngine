@@ -41,6 +41,15 @@ export interface Match {
   /** The ball spot applied to every game in this match. */
   ballSpot: BallSpot;
 
+  /**
+   * True when {@link ballSpot} was AGREED between the players (a league
+   * override, e.g. "play this one even") rather than derived from ratings. The
+   * spot is still the fact the games were played under, so the rating engine
+   * reads it like any other; the flag only says where it came from. Absent on a
+   * rating-derived spot.
+   */
+  spotAgreed?: boolean;
+
   winner: PlayerId;
   score: MatchScore;
 

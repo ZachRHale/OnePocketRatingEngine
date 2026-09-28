@@ -165,6 +165,27 @@ describe("buildWeeklyReport", () => {
     expect(upcoming[0]!.formattedSpot).toBe("8-7"); // 520 vs 470: a 50-point gap
   });
 
+  it("prints an agreed spot over the ratings' and flags it", () => {
+    const ratings = new SimpleProvisionalRatingEngine().calculateRatings({
+      players: PLAYERS,
+      matches: [],
+    });
+    const schedule = SCHEDULE.map((f) =>
+      f.week === 1 && f.home === "ann"
+        ? { ...f, agreedSpot: { home: 8, away: 8 } }
+        : f,
+    );
+    const r = buildWeeklyReport(
+      new LeagueService(PLAYERS, ratings, []),
+      { players: PLAYERS, matches: [], schedule, divisions: DIVISIONS },
+      { sessionId: SESSION, week: 1, spotRatings: ratings },
+    );
+    const [a] = r.divisions[0]!.upcoming;
+    expect(a!.formattedSpot).toBe("8-8"); // the ratings alone say 8-7
+    expect(a!.spotAgreed).toBe(true);
+    expect(r.divisions[1]!.upcoming[0]!.spotAgreed).toBe(false);
+  });
+
   it("leaves the spot null when no spot ratings are supplied", () => {
     const r = report([], { week: 1 });
     expect(r.divisions[0]!.upcoming[0]!.spot).toBeNull();

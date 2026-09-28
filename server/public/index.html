@@ -581,12 +581,13 @@
       let schedule = null;
 
       function fixtureRow(m) {
+        const shown = m.spotAgreed ? `${m.formatted} agreed` : m.formatted;
         const spot = m.formatted
           ? m.played
-            ? `played · ${m.formatted}`
+            ? `played · ${shown}`
             : m.spotSettled
-              ? m.formatted
-              : `${m.formatted}?`
+              ? shown
+              : `${shown}?`
           : "";
         return `<div class="fixture${m.played ? " done" : ""}">
           <span>${m.homeName}</span>
@@ -782,10 +783,17 @@
           return;
         }
         try {
-          const r = await api(`/api/ballspot?home=${home}&away=${away}`);
+          // Session + week let the server apply a spot agreed on the schedule.
+          const week = Number($("mWeek").value);
+          const r = await api(
+            `/api/ballspot?home=${home}&away=${away}&session=${encodeURIComponent(state.activeSessionId)}&week=${week}`,
+          );
           spot = r.spot;
+          const agreed = r.agreed
+            ? ` (agreed for week ${week}, overriding the ratings)`
+            : "";
           $("mSpot").textContent =
-            `Ball spot ${r.formatted} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
+            `Ball spot ${r.formatted}${agreed} — race to ${state.raceToGames}. Enter the loser's balls per game (winner reached their target).`;
         } catch (e) {
           spot = null;
           $("mSpot").textContent = e.message;
@@ -873,6 +881,8 @@
       $("spotAway").addEventListener("change", updateSpotLookup);
       $("mHome").addEventListener("change", updateMatchSpot);
       $("mAway").addEventListener("change", updateMatchSpot);
+      // The week decides whether an agreed spot applies.
+      $("mWeek").addEventListener("change", updateMatchSpot);
       $("mForfeit").addEventListener("change", applyForfeitMode);
       $("addGame").addEventListener("click", () =>
         $("games").appendChild(gameRow()),

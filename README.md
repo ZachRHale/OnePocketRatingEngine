@@ -89,6 +89,25 @@ npm run serve     # http://localhost:8080  (no extra dependencies)
 The store is also what the test scenarios load through, so fixtures exercise the
 real persistence path rather than a parallel loader.
 
+### Agreed spots (overriding the ratings for one match)
+
+When the league agrees a spot the ratings wouldn't give — say, an underrated
+player playing a match even — put it on the fixture in `schedule.csv`:
+
+```csv
+session,week,home,away,spotHome,spotAway
+fall-2026,6,dave,ryan,8,8
+```
+
+Leave both cells blank on every other fixture. The schedule view and the weekly
+email then show `8-8 (agreed)`, and recording that match (same session, week and
+pair, either seat order) uses the agreed spot and writes it into `games.csv`'s
+`spotHome`/`spotAway` columns. From there it is a fact like the ball counts: the
+rating engine reads the games against the spot they were actually played under,
+so the result corrects the player's rating by itself. Don't edit a player's Fargo
+seed to get the same effect — spots are re-derived from history, so that
+re-spots every match they have already played.
+
 ## The weekly email
 
 The bulletin that goes out between match nights — last week's results, this

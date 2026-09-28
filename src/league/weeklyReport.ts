@@ -59,6 +59,8 @@ export interface ReportResult {
   spot: BallSpot;
   /** That spot in "8-7" notation, oriented home-away. */
   formattedSpot: string;
+  /** True when the spot was agreed between the players, not set by ratings. */
+  spotAgreed: boolean;
   winner: ReportPlayer;
   loser: ReportPlayer;
   /** Games won by each side, e.g. `{ home: 3, away: 1 }`. */
@@ -82,6 +84,11 @@ export interface ReportFixture {
    */
   spot: BallSpot | null;
   formattedSpot: string | null;
+  /**
+   * True when {@link spot} is a spot agreed in advance on the schedule rather
+   * than read off the ratings. An agreed spot is settled: re-basing cannot move it.
+   */
+  spotAgreed: boolean;
   /** Whether a result has already been recorded for this fixture. */
   played: boolean;
 }
@@ -272,13 +279,14 @@ export function buildWeeklyReport(
 
   const recorded = resultKeys(matches);
   const toFixture = (f: Fixture): ReportFixture => {
-    const spot = spotFor(f.home, f.away);
+    const spot = f.agreedSpot ?? spotFor(f.home, f.away);
     return {
       week: f.week,
       home: named(f.home),
       away: named(f.away),
       spot,
       formattedSpot: spot ? formatBallSpot(spot) : null,
+      spotAgreed: f.agreedSpot !== undefined,
       played: recorded.has(pairKey(f.week, f.home, f.away)),
     };
   };
@@ -423,6 +431,7 @@ function reportResult(
     away: named(m.away),
     spot: m.ballSpot,
     formattedSpot: formatBallSpot(m.ballSpot),
+    spotAgreed: m.spotAgreed === true,
     winner: named(m.winner),
     loser: named(homeWon ? m.away : m.home),
     score: { home: m.score.home, away: m.score.away },

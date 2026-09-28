@@ -21,6 +21,7 @@ import {
   RACE_TO_GAMES,
   SPOT_REFRESH_GAMES,
   SimpleProvisionalRatingEngine,
+  agreedSpotFor,
   ballSpotForRatings,
   buildSchedule,
   draftDivisions,
@@ -28,6 +29,7 @@ import {
   fixturesToWeeks,
   formatBallSpot,
   spotRatingsFor,
+  type BallSpot,
   type Fixture,
   type LeagueData,
   type PlayerRating,
@@ -186,9 +188,20 @@ function stateFor(sessionId: SessionId, divisionId: string | null): unknown {
   };
 }
 
-/** Tonight's spot for a pairing, oriented to home/away. */
-function ballSpot(home: string, away: string): unknown {
-  const data = store.load();
+/**
+ * The spot a pairing plays under, oriented to home/away. When a session and
+ * week are given and the schedule carries an agreed spot for that fixture, the
+ * agreement wins (`agreed: true`); otherwise the spot comes from the players'
+ * spot ratings. The ratings are returned either way, so a caller can show how
+ * far an agreed spot departs from what the ratings would have set.
+ */
+function spotFor(
+  data: LeagueData,
+  home: string,
+  away: string,
+  sessionId?: SessionId,
+  week?: number,
+): { spot: BallSpot; agreed: boolean; homeRating: number; awayRating: number } {
   const ratingById = new Map(
     spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
   );
@@ -197,15 +210,27 @@ function ballSpot(home: string, away: string): unknown {
   if (hr === undefined || ar === undefined) {
     throw new HttpError(400, `Unknown player in matchup ${home} vs ${away}`);
   }
-  const spot = ballSpotForRatings(handicapTable, hr, ar);
+  const agreed =
+    sessionId !== undefined && week !== undefined
+      ? agreedSpotFor(data.schedule, sessionId, week, home, away)
+      : undefined;
   return {
-    home,
-    away,
+    spot: agreed ?? ballSpotForRatings(handicapTable, hr, ar),
+    agreed: agreed !== undefined,
     homeRating: hr,
     awayRating: ar,
-    spot,
-    formatted: formatBallSpot(spot),
   };
+}
+
+/** Tonight's spot for a pairing, oriented to home/away. */
+function ballSpot(
+  home: string,
+  away: string,
+  sessionId?: SessionId,
+  week?: number,
+): unknown {
+  const r = spotFor(store.load(), home, away, sessionId, week);
+  return { home, away, ...r, formatted: formatBallSpot(r.spot) };
 }
 
 interface RecordMatchBody {
@@ -243,16 +268,15 @@ function recordMatch(body: RecordMatchBody): unknown {
   }
 
   // Validate each game against the spot in effect right now before writing.
-  const data = store.load();
-  const ratingById = new Map(
-    spotRatings(data).map((r) => [r.playerId, r.leagueRating]),
+  // A spot agreed on the schedule for this fixture overrides the ratings, and
+  // is written into the log so the result records what was actually played.
+  const { spot, agreed } = spotFor(
+    store.load(),
+    home,
+    away,
+    sessionId,
+    week as number,
   );
-  const hr = ratingById.get(home);
-  const ar = ratingById.get(away);
-  if (hr === undefined || ar === undefined) {
-    throw new HttpError(400, `Unknown player in matchup ${home} vs ${away}`);
-  }
-  const spot = ballSpotForRatings(handicapTable, hr, ar);
 
   let homeWins = 0;
   let awayWins = 0;
@@ -294,6 +318,7 @@ function recordMatch(body: RecordMatchBody): unknown {
     home,
     away,
     games: cleaned,
+    ...(agreed ? { agreedSpot: spot } : {}),
   });
   return { matchId, ...(stateFor(sessionId, body.division ?? null) as object) };
 }
@@ -478,16 +503,26 @@ function scheduleFor(sessionId: SessionId, divisionId: string | null): unknown {
       matches: week.matches.map((m) => {
         const hr = ratingById.get(m.home);
         const ar = ratingById.get(m.away);
+        const agreed = agreedSpotFor(
+          fixtures,
+          sessionId,
+          week.week,
+          m.home,
+          m.away,
+        );
         const spot =
-          hr === undefined || ar === undefined
+          agreed ??
+          (hr === undefined || ar === undefined
             ? null
-            : ballSpotForRatings(handicapTable, hr, ar);
-        // Only week 1 can be printed with confidence: any later week sits
-        // behind games that may re-base either player's spot first.
+            : ballSpotForRatings(handicapTable, hr, ar));
+        // An agreed spot is settled by definition. Otherwise only week 1 can
+        // be printed with confidence: any later week sits behind games that
+        // may re-base either player's spot first.
         const settled =
-          week.week === 1 &&
-          (owed.get(m.home) ?? 0) > 0 &&
-          (owed.get(m.away) ?? 0) > 0;
+          agreed !== undefined ||
+          (week.week === 1 &&
+            (owed.get(m.home) ?? 0) > 0 &&
+            (owed.get(m.away) ?? 0) > 0);
         return {
           home: m.home,
           homeName: nameById.get(m.home) ?? m.home,
@@ -496,6 +531,7 @@ function scheduleFor(sessionId: SessionId, divisionId: string | null): unknown {
           spot,
           formatted: spot ? formatBallSpot(spot) : null,
           spotSettled: settled,
+          spotAgreed: agreed !== undefined,
           played: playedKeys.has(pairKey(week.week, m.home, m.away)),
         };
       }),
@@ -743,7 +779,11 @@ const server = createServer(async (req, res) => {
       if (!home || !away || home === away) {
         throw new HttpError(400, "home and away must be two different players");
       }
-      sendJson(res, 200, ballSpot(home, away));
+      // Optional: with a session and week, an agreed spot on that fixture wins.
+      const session = url.searchParams.get("session") || undefined;
+      const weekParam = url.searchParams.get("week");
+      const week = weekParam ? Number(weekParam) : undefined;
+      sendJson(res, 200, ballSpot(home, away, session, week));
       return;
     }
 

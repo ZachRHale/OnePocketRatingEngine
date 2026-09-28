@@ -70,10 +70,11 @@ describe("CsvLeagueStore forfeits", () => {
 
     const raw = readFileSync(join(dir, "games.csv"), "utf8");
     const lines = raw.trim().split("\n");
-    // Header gained the column; the legacy row was backfilled with forfeit=0.
-    expect(lines[0]).toBe(`${LEGACY_GAMES_HEADER},forfeit`);
-    expect(lines[1]).toBe("spring-2026,sp-w1-1,1,a,b,a,2,0");
-    expect(lines[2]!.endsWith(",1")).toBe(true); // the appended forfeit row
+    // Header gained the columns; the legacy row was backfilled with forfeit=0
+    // and blank (rating-derived) spot cells.
+    expect(lines[0]).toBe(`${LEGACY_GAMES_HEADER},forfeit,spotHome,spotAway`);
+    expect(lines[1]).toBe("spring-2026,sp-w1-1,1,a,b,a,2,0,,");
+    expect(lines[2]!.endsWith(",1,,")).toBe(true); // the appended forfeit row
 
     // And it still loads: one played game + one forfeit, both intact.
     const { matches } = store.load();

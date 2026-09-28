@@ -24,6 +24,7 @@ export {
   buildSchedule,
   fixturesToWeeks,
   fixturesFor,
+  agreedSpotFor,
 } from "./schedule.js";
 export type {
   ScheduledMatch,

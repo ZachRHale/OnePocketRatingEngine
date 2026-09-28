@@ -107,6 +107,15 @@ function fixtureLine(f: ReportFixture): string {
   return `${f.home.name} vs ${f.away.name}`;
 }
 
+/**
+ * A spot for display, marked when the players agreed it rather than the ratings
+ * setting it — so an even spot between unevenly rated players reads as a
+ * decision, not a bug.
+ */
+function spotLabel(formatted: string, agreed: boolean): string {
+  return agreed ? `${formatted} (agreed)` : formatted;
+}
+
 /** Explains the per-game ball column, which is otherwise easy to misread. */
 const GAMES_LEGEND =
   "Games are balls pocketed each game, home-away; the winner is the side " +
@@ -198,7 +207,7 @@ function resultsTableHtml(results: readonly ReportResult[], showWeek = false): s
       (r) =>
         `<tr>${showWeek ? `<td style="${TD}">${r.week}</td>` : ""}` +
         `<td style="${TD}">${scoreCellHtml(r)}</td>` +
-        `<td style="${TD}">${escapeHtml(r.formattedSpot)}</td>` +
+        `<td style="${TD}">${escapeHtml(spotLabel(r.formattedSpot, r.spotAgreed))}</td>` +
         `<td style="${TD}color:${MUTED}">${gameCellHtml(r)}</td></tr>`,
     )
     .join("");
@@ -221,7 +230,7 @@ function fixturesTableHtml(
       return (
         `<tr>${showWeek ? `<td style="${TD}">${f.week}</td>` : ""}` +
         `<td style="${TD}">${escapeHtml(fixtureLine(f))}</td>` +
-        `<td style="${TD}">${escapeHtml(f.formattedSpot ?? "—")}</td>` +
+        `<td style="${TD}">${escapeHtml(f.formattedSpot ? spotLabel(f.formattedSpot, f.spotAgreed) : "—")}</td>` +
         `<td style="${TD}font-size:12px">${status}</td></tr>`
       );
     })
@@ -409,7 +418,7 @@ function textResults(results: readonly ReportResult[], showWeek = false): string
   return results.map((r) => {
     const prefix = showWeek ? `wk${r.week}  ` : "";
     const games = gameLine(r);
-    return `  ${prefix}${scoreLine(r)}  [${r.formattedSpot}]  ${games}`;
+    return `  ${prefix}${scoreLine(r)}  [${spotLabel(r.formattedSpot, r.spotAgreed)}]  ${games}`;
   });
 }
 
@@ -419,7 +428,9 @@ function textFixtures(
 ): string[] {
   return fixtures.map((f) => {
     const prefix = showWeek ? `wk${f.week}  ` : "";
-    const spot = f.formattedSpot ? `  [${f.formattedSpot}]` : "";
+    const spot = f.formattedSpot
+      ? `  [${spotLabel(f.formattedSpot, f.spotAgreed)}]`
+      : "";
     const played = f.played ? "  (already played)" : "";
     return `  ${prefix}${fixtureLine(f)}${spot}${played}`;
   });
