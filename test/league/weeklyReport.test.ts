@@ -78,29 +78,38 @@ function report(
 
 describe("currentWeekFor", () => {
   it("is week 1 before anything is played", () => {
-    expect(currentWeekFor([], SCHEDULE, SESSION)).toBe(1);
+    expect(currentWeekFor([], SESSION)).toBe(1);
   });
 
-  it("stays on the latest week while it is still being played", () => {
+  it("moves past a week as soon as it has a result", () => {
+    // Week 1 is one short, but its match night has happened: the missing
+    // fixture is a makeup, not a reason to keep previewing week 1.
     const matches = [played("m1", 1, "ann", "bob", "ann")];
-    expect(currentWeekFor(matches, SCHEDULE, SESSION)).toBe(1);
+    expect(currentWeekFor(matches, SESSION)).toBe(2);
   });
 
-  it("advances once every fixture of the latest week has a result", () => {
+  it("is the week after a fully played week", () => {
     const matches = [
       played("m1", 1, "ann", "bob", "ann"),
       played("m2", 1, "cid", "dee", "dee"),
     ];
-    expect(currentWeekFor(matches, SCHEDULE, SESSION)).toBe(2);
+    expect(currentWeekFor(matches, SESSION)).toBe(2);
   });
 
-  it("is not held back by an unplayed makeup from an earlier week", () => {
-    // Week 1 is one short, but a week-2 result proves the league has moved on.
+  it("follows the latest week with a result, not the earliest incomplete one", () => {
     const matches = [
       played("m1", 1, "ann", "bob", "ann"),
       played("m2", 2, "bob", "ann", "bob"),
     ];
-    expect(currentWeekFor(matches, SCHEDULE, SESSION)).toBe(2);
+    expect(currentWeekFor(matches, SESSION)).toBe(3);
+  });
+
+  it("lists a short week's unplayed fixture as a makeup in the inferred report", () => {
+    const r = report([played("m1", 1, "ann", "bob", "ann")]);
+    expect(r.week).toBe(2);
+    expect(r.lastWeek).toBe(1);
+    expect(r.makeupCount).toBe(1);
+    expect(r.divisions[1]!.makeups[0]!.home.name).toBe("Cid");
   });
 
   it("ignores other sessions entirely", () => {
@@ -112,7 +121,7 @@ describe("currentWeekFor", () => {
       sessionId: "other",
       games: [win("ann", 0), win("ann", 0), win("ann", 0)],
     });
-    expect(currentWeekFor([other], SCHEDULE, SESSION)).toBe(1);
+    expect(currentWeekFor([other], SESSION)).toBe(1);
   });
 });
 

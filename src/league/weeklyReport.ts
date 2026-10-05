@@ -186,39 +186,25 @@ const UNDIVIDED_LABEL = "All players";
 /**
  * The week the league is currently on.
  *
- * A week is "current" from the moment it has a result until every one of its
- * scheduled fixtures does:
- *
  *   - no results at all in the session → week 1;
- *   - otherwise the latest week holding a result, unless that week is complete
- *     (every scheduled fixture played), in which case the week after it.
+ *   - otherwise the week after the latest week holding a result.
  *
- * The awkward case this is built for is the makeup: week 1 sitting at seven of
- * eight played does not hold the league at week 1, because the moment a week-2
- * result lands the league has plainly moved on. Only the *latest* week can hold
- * things up, and it does so exactly while it is still being played.
+ * Every fixture in a week is played on the same match night, so a single result
+ * for week N means week N's night has happened. The bulletin goes out between
+ * match nights, which makes week N "last week" and N + 1 the one to preview.
+ * Anything from week N still without a result is a makeup, and the bulletin
+ * lists it as one rather than holding the whole league back for it.
  *
  * It is a heuristic over a log with no dates, so it is a default, not a ruling —
  * pass an explicit `week` whenever it guesses wrong.
  */
 export function currentWeekFor(
   matches: readonly Match[],
-  schedule: readonly Fixture[],
   sessionId: SessionId,
 ): number {
   const played = matches.filter((m) => m.sessionId === sessionId);
   if (played.length === 0) return 1;
-
-  const latest = Math.max(...played.map((m) => m.week));
-  const scheduled = schedule.filter(
-    (f) => f.sessionId === sessionId && f.week === latest,
-  );
-  const recorded = resultKeys(played);
-  const complete =
-    scheduled.length > 0 &&
-    scheduled.every((f) => recorded.has(pairKey(f.week, f.home, f.away)));
-
-  return complete ? latest + 1 : latest;
+  return Math.max(...played.map((m) => m.week)) + 1;
 }
 
 /**
@@ -252,7 +238,7 @@ export function buildWeeklyReport(
   const fixtures = input.schedule.filter((f) => f.sessionId === sessionId);
 
   const week =
-    options.week ?? currentWeekFor(input.matches, input.schedule, sessionId);
+    options.week ?? currentWeekFor(input.matches, sessionId);
   if (!Number.isInteger(week) || week < 1) {
     throw new Error(`week must be a positive integer, got ${week}`);
   }
