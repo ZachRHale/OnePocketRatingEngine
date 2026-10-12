@@ -86,6 +86,29 @@ describe("computePlayerRecords", () => {
     expect(b.ballPct).toBeCloseTo(6 / 8, 10); // measured on the real loss only
   });
 
+  it("tallies matches won/lost separately from games", () => {
+    // a wins two close matches 3-2; b wins one 3-0. a has more matches (2-1)
+    // but fewer games (6-8) — the case match counts exist to surface.
+    const records = computePlayerRecords([
+      match({ id: "m1", home: "a", away: "b", games: [...wins("b", 2), ...wins("a", 3)] }),
+      match({ id: "m2", home: "a", away: "b", games: [...wins("b", 2), ...wins("a", 3)] }),
+      match({ id: "m3", home: "a", away: "b", games: wins("b", 3) }),
+      forfeitMatch({ id: "f", home: "a", away: "b", winner: "b" }),
+    ]);
+    expect(records.get("a")!).toMatchObject({
+      matchesPlayed: 4,
+      matchesWon: 2,
+      matchesLost: 2,
+      gamesWon: 6,
+    });
+    expect(records.get("b")!).toMatchObject({
+      matchesPlayed: 4,
+      matchesWon: 2,
+      matchesLost: 2,
+      gamesWon: 7 + 3,
+    });
+  });
+
   it("throws when a game winner is not a match participant", () => {
     const bad = match({ id: "m", home: "a", away: "b", games: wins("a", 1) });
     bad.games[0]!.winner = "ghost";

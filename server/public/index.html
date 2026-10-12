@@ -303,9 +303,11 @@
               <tr>
                 <th class="num">#</th>
                 <th>Player</th>
-                <th class="num">GP</th>
-                <th class="num">W</th>
-                <th class="num">L</th>
+                <th class="num" title="Matches won">MW</th>
+                <th class="num" title="Matches lost">ML</th>
+                <th class="num" title="Games played">GP</th>
+                <th class="num" title="Games won">GW</th>
+                <th class="num" title="Games lost">GL</th>
                 <th
                   class="num"
                   title="Games won ÷ games played — the primary ranking"
@@ -338,7 +340,8 @@
           </table>
         </div>
         <p class="hint">
-          Ranked by <b>Win%</b> (games won); ties broken by <b>Ball%</b> (balls
+          <b>MW/ML</b> = matches won/lost; <b>GW/GL</b> = games won/lost.
+          Ranked by <b>Win%</b> (games won, not matches); ties broken by <b>Ball%</b> (balls
           made out of balls available, across all games). <b>Spot</b> = the
           rating that sets your ball spots; it re-bases every 10 games you play
           and holds steady in between. <b>Live</b> = current rating, moves after
@@ -530,6 +533,8 @@
             return `<tr>
               <td class="num">${s.rank}</td>
               <td>${s.name}</td>
+              <td class="num">${s.matchesWon}</td>
+              <td class="num">${s.matchesLost}</td>
               <td class="num">${s.gamesPlayed}</td>
               <td class="num">${s.gamesWon}</td>
               <td class="num">${s.gamesLost}</td>

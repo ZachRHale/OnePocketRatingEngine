@@ -24,6 +24,11 @@ export interface Standing {
   playerId: PlayerId;
   name: string;
 
+  // Match record — shown alongside, but does not affect the ranking.
+  matchesPlayed: number;
+  matchesWon: number;
+  matchesLost: number;
+
   // Ranking fields (results-based).
   gamesPlayed: number;
   gamesWon: number;
@@ -184,6 +189,9 @@ export class LeagueService {
       return {
         playerId: record.playerId,
         name: player?.name ?? record.playerId,
+        matchesPlayed: record.matchesPlayed,
+        matchesWon: record.matchesWon,
+        matchesLost: record.matchesLost,
         gamesPlayed: record.gamesPlayed,
         gamesWon: record.gamesWon,
         gamesLost: record.gamesLost,

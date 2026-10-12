@@ -256,7 +256,8 @@ function anyProvisional(report: WeeklyReport): boolean {
 function standingsTableHtml(rows: readonly ReportStanding[]): string {
   const head =
     `<tr><th style="${TH}">#</th><th style="${TH}">Player</th>` +
-    `<th style="${TH_NUM}">W</th><th style="${TH_NUM}">L</th>` +
+    `<th style="${TH_NUM}">MW</th><th style="${TH_NUM}">ML</th>` +
+    `<th style="${TH_NUM}">GW</th><th style="${TH_NUM}">GL</th>` +
     `<th style="${TH_NUM}">Win%</th>` +
     `<th style="${TH_NUM}">Ball%</th>` +
     `<th style="${TH_NUM}">Spot</th></tr>`;
@@ -265,6 +266,8 @@ function standingsTableHtml(rows: readonly ReportStanding[]): string {
       (s) =>
         `<tr><td style="${TD}color:${MUTED}">${s.rank}</td>` +
         `<td style="${TD}">${escapeHtml(s.name)}</td>` +
+        `<td style="${TD_NUM}">${s.matchesWon}</td>` +
+        `<td style="${TD_NUM}">${s.matchesLost}</td>` +
         `<td style="${TD_NUM}">${s.gamesWon}</td>` +
         `<td style="${TD_NUM}">${s.gamesLost}</td>` +
         `<td style="${TD_NUM}">${pct(s.winPct)}</td>` +
@@ -373,8 +376,9 @@ export function renderReportHtml(report: WeeklyReport): string {
     );
   }
   parts.push(
-    `<p style="${NOTE}">Standings are games won and lost within ` +
-      `${escapeHtml(report.sessionLabel)}. Ties on Win% are broken by Ball% — ` +
+    `<p style="${NOTE}">MW/ML are matches won and lost; GW/GL are games won ` +
+      `and lost within ${escapeHtml(report.sessionLabel)}. Ranking is by ` +
+      `games (Win%), not matches. Ties on Win% are broken by Ball% — ` +
       `the share of the balls you needed that you actually pocketed. Spot is ` +
       `the rating your ball spots are set from; it re-bases once you finish ` +
       `another block of games, not after every game.</p>`,
@@ -439,12 +443,13 @@ function textFixtures(
 function textStandings(rows: readonly ReportStanding[]): string[] {
   const width = Math.max(6, ...rows.map((s) => s.name.length));
   const header =
-    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}   W   L   Win%  Ball%    Spot`;
+    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}  MW  ML  GW  GL   Win%  Ball%    Spot`;
   return [
     header,
     ...rows.map(
       (s) =>
         `  ${String(s.rank).padStart(2)}  ${s.name.padEnd(width)}` +
+        `  ${String(s.matchesWon).padStart(2)}  ${String(s.matchesLost).padStart(2)}` +
         `  ${String(s.gamesWon).padStart(2)}  ${String(s.gamesLost).padStart(2)}` +
         `  ${pct(s.winPct).padStart(5)}  ${pct(s.ballPct).padStart(5)}` +
         `  ${spotRating(s).padStart(6)}`,
@@ -521,10 +526,11 @@ export function renderReportText(report: WeeklyReport): string {
     out.push(`${d.label}:`, ...textStandings(d.standings), "");
   }
   out.push(
-    `Standings cover ${report.sessionLabel} only. Ties on Win% break on Ball% —`,
-    "the share of the balls you needed that you actually pocketed. Spot is the",
-    "rating your ball spots come from; it re-bases once you finish another block",
-    "of games, not after every game.",
+    `Standings cover ${report.sessionLabel} only. MW/ML = matches won/lost;`,
+    "GW/GL = games won/lost. Ranking is by games (Win%), not matches. Ties on",
+    "Win% break on Ball% — the share of the balls you needed that you actually",
+    "pocketed. Spot is the rating your ball spots come from; it re-bases once",
+    "you finish another block of games, not after every game.",
   );
   if (anyProvisional(report)) {
     out.push(

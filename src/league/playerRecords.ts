@@ -10,6 +10,11 @@ import type { Match, PlayerId } from "../domain/index.js";
  */
 export interface PlayerRecord {
   playerId: PlayerId;
+  /** Matches played, forfeits included. */
+  matchesPlayed: number;
+  /** Matches won — a forfeit counts as a match won for the side awarded it. */
+  matchesWon: number;
+  matchesLost: number;
   gamesPlayed: number;
   gamesWon: number;
   gamesLost: number;
@@ -35,6 +40,9 @@ export interface PlayerRecord {
 
 /** Mutable accumulator used only while rolling up matches. */
 interface RecordAccumulator {
+  matchesPlayed: number;
+  matchesWon: number;
+  matchesLost: number;
   gamesPlayed: number;
   gamesWon: number;
   gamesLost: number;
@@ -44,6 +52,9 @@ interface RecordAccumulator {
 
 function emptyAccumulator(): RecordAccumulator {
   return {
+    matchesPlayed: 0,
+    matchesWon: 0,
+    matchesLost: 0,
     gamesPlayed: 0,
     gamesWon: 0,
     gamesLost: 0,
@@ -79,6 +90,16 @@ export function computePlayerRecords(
   for (const match of matches) {
     const home = accFor(match.home);
     const away = accFor(match.away);
+
+    home.matchesPlayed++;
+    away.matchesPlayed++;
+    if (match.winner === match.home) {
+      home.matchesWon++;
+      away.matchesLost++;
+    } else {
+      away.matchesWon++;
+      home.matchesLost++;
+    }
 
     // A forfeit awards the full race to the winner without any games being
     // played: credit the win/loss (and games played) at the match level, but
@@ -133,6 +154,9 @@ function finalize(id: PlayerId, a: RecordAccumulator): PlayerRecord {
   const ballPct = a.ballsAvailable > 0 ? a.ballsMade / a.ballsAvailable : 0;
   return {
     playerId: id,
+    matchesPlayed: a.matchesPlayed,
+    matchesWon: a.matchesWon,
+    matchesLost: a.matchesLost,
     gamesPlayed: a.gamesPlayed,
     gamesWon: a.gamesWon,
     gamesLost: a.gamesLost,
