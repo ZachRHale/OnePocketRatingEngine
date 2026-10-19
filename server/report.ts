@@ -122,7 +122,7 @@ const GAMES_LEGEND =
   "that reached their spot.";
 
 function pct(value: number): string {
-  return (value * 100).toFixed(0) + "%";
+  return (value * 100).toFixed(2) + "%";
 }
 
 /** True when the bulletin has nothing at all to say for a section. */
@@ -443,7 +443,7 @@ function textFixtures(
 function textStandings(rows: readonly ReportStanding[]): string[] {
   const width = Math.max(6, ...rows.map((s) => s.name.length));
   const header =
-    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}  MW  ML  GW  GL   Win%  Ball%    Spot`;
+    `  ${"#".padStart(2)}  ${"Player".padEnd(width)}  MW  ML  GW  GL     Win%    Ball%    Spot`;
   return [
     header,
     ...rows.map(
@@ -451,7 +451,7 @@ function textStandings(rows: readonly ReportStanding[]): string[] {
         `  ${String(s.rank).padStart(2)}  ${s.name.padEnd(width)}` +
         `  ${String(s.matchesWon).padStart(2)}  ${String(s.matchesLost).padStart(2)}` +
         `  ${String(s.gamesWon).padStart(2)}  ${String(s.gamesLost).padStart(2)}` +
-        `  ${pct(s.winPct).padStart(5)}  ${pct(s.ballPct).padStart(5)}` +
+        `  ${pct(s.winPct).padStart(7)}  ${pct(s.ballPct).padStart(7)}` +
         `  ${spotRating(s).padStart(6)}`,
     ),
   ];
